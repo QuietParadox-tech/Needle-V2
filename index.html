@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="NEEDLE">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#2a1a10">
+<title>NEEDLE</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="bg" aria-hidden="true">
+  <div class="bg-layer" id="bgA"></div>
+  <div class="bg-layer" id="bgB"></div>
+  <div class="grain"></div>
+  <div class="vignette"></div>
+</div>
+
+<main id="stage" aria-label="Now playing">
+  <div id="sleeve">
+    <div class="sleeve-fallback">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="34" fill="none" stroke="currentColor" stroke-width=".6"/><circle cx="50" cy="50" r="26" fill="none" stroke="currentColor" stroke-width=".6"/><circle cx="50" cy="50" r="18" fill="none" stroke="currentColor" stroke-width=".6"/><circle cx="50" cy="50" r="2" fill="currentColor"/></svg>
+      <span>NEEDLE</span>
+    </div>
+    <img class="art" id="artA" alt="" decoding="async">
+    <img class="art" id="artB" alt="" decoding="async">
+    <div class="sleeve-gloss"></div>
+  </div>
+
+  <div id="record">
+    <div id="disc">
+      <div class="label">
+        <svg class="ring" viewBox="0 0 200 200" aria-hidden="true">
+          <defs>
+            <path id="arcTop" d="M 14 100 A 86 86 0 0 1 186 100"/>
+            <path id="arcBot" d="M 14 100 A 86 86 0 0 0 186 100"/>
+          </defs>
+          <text class="ring-text" font-size="7.2" letter-spacing="1.6"><textPath href="#arcTop" startOffset="50%" text-anchor="middle">NEEDLE · 33⅓ RPM · STEREO</textPath></text>
+          <text class="ring-text" font-size="7.2" letter-spacing="1.4"><textPath id="ringAlbum" href="#arcBot" startOffset="50%" text-anchor="middle"></textPath></text>
+        </svg>
+        <div class="l-title"><span id="lTitle">NEEDLE</span></div>
+        <div class="hole"></div>
+        <div class="l-artist"><span id="lArtist">Connect · Play · Spin</span></div>
+      </div>
+    </div>
+    <div class="sheen"></div>
+  </div>
+
+  <div id="plinth"></div>
+  <svg id="tonearm" viewBox="0 0 100 400" aria-hidden="true">
+    <defs>
+      <linearGradient id="metal" x1="0" x2="1"><stop offset="0" stop-color="#686b70"/><stop offset=".35" stop-color="#eceef1"/><stop offset=".62" stop-color="#b3b7bc"/><stop offset="1" stop-color="#666a6f"/></linearGradient>
+      <linearGradient id="blk" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#46464a"/><stop offset="1" stop-color="#0c0c0d"/></linearGradient>
+      <radialGradient id="pivot" cx=".4" cy=".35"><stop offset="0" stop-color="#55555a"/><stop offset="1" stop-color="#111112"/></radialGradient>
+    </defs>
+    <rect x="34" y="2" width="32" height="50" rx="4" fill="url(#blk)"/>
+    <rect x="45" y="50" width="10" height="30" fill="#18181a"/>
+    <circle cx="50" cy="80" r="24" fill="url(#pivot)"/>
+    <circle cx="50" cy="80" r="9" fill="#262628" stroke="#5a5a5e" stroke-width="1"/>
+    <rect x="46" y="84" width="8" height="224" rx="2" fill="url(#metal)"/>
+    <rect x="44.5" y="294" width="11" height="18" rx="1.5" fill="#1a1a1c"/>
+    <path d="M43 306 H57 L60 332 L73 358 V382 L66 390 L58 386 L50 366 L42 340 Z" fill="url(#blk)"/>
+    <rect x="68" y="380" width="14" height="6" rx="2" fill="#101011"/>
+  </svg>
+</main>
+
+<header id="top" class="ui">
+  <div class="brand">
+    <span class="wordmark">NEEDLE</span>
+    <span id="deviceCap" class="cap"></span>
+  </div>
+  <div class="tools">
+    <button class="icon sm" id="btnDevices" title="Choose playback device" aria-label="Choose playback device"><svg viewBox="0 0 24 24"><path d="M4 6h16v10H4zM2 18h20v2H2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></button>
+    <button class="icon sm" id="btnAmbient" title="Ambient mode (A)" aria-label="Ambient mode"><svg viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg></button>
+    <button class="icon sm" id="btnFull" title="Fullscreen (F)" aria-label="Fullscreen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    <button class="icon sm" id="btnLogout" title="Disconnect Spotify" aria-label="Disconnect Spotify"><svg viewBox="0 0 24 24"><path d="M10 4H5v16h5M15 8l4 4-4 4M19 12H9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  </div>
+</header>
+
+<footer id="dock" class="ui">
+  <div class="progress">
+    <span id="tCur">0:00</span>
+    <div class="bar" id="bar" role="slider" aria-label="Seek" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="track"><div class="fill" id="fill"></div></div></div>
+    <span id="tDur">0:00</span>
+  </div>
+  <div class="btns">
+    <button class="icon" id="btnPrev" aria-label="Previous track"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9.5 12z"/></svg></button>
+    <button class="icon" id="btnPlay" aria-label="Play or pause">
+      <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+      <svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+    </button>
+    <button class="icon" id="btnNext" aria-label="Next track"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l10.5-7z"/></svg></button>
+  </div>
+</footer>
+
+<div id="notice" role="status" hidden>
+  <p id="noticeText"></p>
+  <div id="noticeActions"></div>
+</div>
+
+<section id="gate" aria-live="polite">
+  <div class="card">
+    <div class="mini-vinyl" aria-hidden="true"></div>
+    <h1>NEEDLE</h1>
+    <p class="tag">Your Spotify, spinning as a record.</p>
+    <p id="gateError" class="err" hidden></p>
+
+    <div id="setupBox" hidden>
+      <p class="fine">NEEDLE is not configured yet. The site owner must add the shared Spotify Client ID to <code>config.js</code>. You do not need to create your own Spotify Developer app.</p>
+      <label>Redirect URI the owner must add in Spotify Dashboard</label>
+      <div class="uri"><code id="redirectUri"></code><button class="mini" id="btnCopy" type="button">Copy</button></div>
+      <p id="envWarn" class="warn" hidden></p>
+    </div>
+
+    <button class="cta" id="btnConnect">Connect Spotify</button>
+    <button class="linkish" id="btnDemo">Preview with demo tracks</button>
+    <p class="fine">Needs Spotify Premium for playback control. NEEDLE only asks to read and control your playback.</p>
+  </div>
+</section>
+
+<section id="devicesModal" class="modal" hidden>
+  <div class="card">
+    <h2>Playback device</h2>
+    <p class="fine">NEEDLE shows and controls what Spotify is playing; the audio comes from the device you pick here.</p>
+    <ul id="deviceList"></ul>
+    <button class="linkish" id="btnDevicesClose">Close</button>
+  </div>
+</section>
+
+<div id="toast" role="status"></div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

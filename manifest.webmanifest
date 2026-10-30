@@ -1,0 +1,15 @@
+{
+  "name": "NEEDLE",
+  "short_name": "NEEDLE",
+  "description": "A full-screen vinyl record player for your Spotify.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#2a1a10",
+  "theme_color": "#2a1a10",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
