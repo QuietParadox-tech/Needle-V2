@@ -59,7 +59,8 @@
   </div>
 
   <div id="plinth"></div>
-  <svg id="tonearm" viewBox="0 0 100 400" aria-hidden="true">
+  <svg id="tonearm" viewBox="0 0 100 400" aria-label="Tonearm: tap or drag to play or pause">
+    <rect x="18" y="0" width="64" height="400" fill="transparent" pointer-events="all"/>
     <defs>
       <linearGradient id="metal" x1="0" x2="1"><stop offset="0" stop-color="#686b70"/><stop offset=".35" stop-color="#eceef1"/><stop offset=".62" stop-color="#b3b7bc"/><stop offset="1" stop-color="#666a6f"/></linearGradient>
       <linearGradient id="blk" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#46464a"/><stop offset="1" stop-color="#0c0c0d"/></linearGradient>
@@ -134,7 +135,7 @@
 
 <section id="libModal" class="modal" hidden>
   <div class="card">
-    <h2>Your playlists</h2>
+    <div class="lib-head"><button class="mini" id="btnLibBack" hidden>‹ Back</button><h2 id="libTitle">Your playlists</h2></div>
     <input id="libSearch" type="search" placeholder="Search your library" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Search your playlists">
     <ul id="plList"></ul>
     <button class="linkish" id="btnLibClose">Close</button>
@@ -145,6 +146,8 @@
   <div class="card">
     <h2>Playback device</h2>
     <p class="fine">NEEDLE shows and controls what Spotify is playing; the audio comes from the device you pick here.</p>
+    <label class="toggle"><input type="checkbox" id="chkLocal" checked><span>Play audio in this browser (as “NEEDLE”)</span></label>
+    <p class="fine" id="localStatus"></p>
     <ul id="deviceList"></ul>
     <button class="linkish" id="btnDevicesClose">Close</button>
   </div>

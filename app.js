@@ -8,11 +8,11 @@
    ===================================================================== */
 
 const CFG = Object.assign({ CLIENT_ID: '', POLL_PLAYING_MS: 3000, POLL_PAUSED_MS: 6000 }, window.NEEDLE_CONFIG || {});
-const NEED_SCOPES = ['user-read-playback-state', 'user-modify-playback-state', 'playlist-read-private', 'playlist-read-collaborative'];
+const NEED_SCOPES = ['user-read-playback-state', 'user-modify-playback-state', 'playlist-read-private', 'playlist-read-collaborative', 'user-library-read', 'streaming', 'user-read-email', 'user-read-private'];
 const SCOPES = NEED_SCOPES.join(' ');
 const API = 'https://api.spotify.com/v1';
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
-const K = { tokens: 'needle.tokens', verifier: 'needle.verifier', state: 'needle.state', cid: 'needle.clientId', ambient: 'needle.ambient', lyrics: 'needle.lyrics' };
+const K = { tokens: 'needle.tokens', verifier: 'needle.verifier', state: 'needle.state', cid: 'needle.clientId', ambient: 'needle.ambient', lyrics: 'needle.lyrics', local: 'needle.local' };
 
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -38,6 +38,9 @@ const S = {
   bgOn: 'B',
   artOn: 'B',
   track: null,          // track currently shown on the label
+  scrub: null,          // position (ms) while the record is being turned by hand
+  armDrag: false, armDown: false,
+  discRot: 0,
   lyricsOn: false,
 };
 let pollTimer = null;
@@ -223,13 +226,14 @@ function applyPlayer(p) {
 function setIdle() {
   S.isPlaying = false; S.syncedAt = performance.now();
   renderPlaying();
-  showNotice('Nothing is playing. Open Spotify on a device and press play, or pick a device to play on.', [
+  showNotice(LOCAL.id ? 'Nothing is playing. Pick a playlist or song and it will play right here in NEEDLE.' : 'Nothing is playing. Open Spotify on a device and press play, or pick a device to play on.', [
     { label: 'Your playlists', fn: openLibrary },
     { label: 'Choose device', fn: openDevices },
   ]);
   if (!S.trackId) { setLabel({ title: 'NEEDLE', artists: 'Nothing playing', album: '' }); setBackground(null); }
 }
 function curProgress() {
+  if (S.scrub != null) return S.scrub;
   if (!S.isPlaying) return S.progress;
   return Math.min(S.duration || Infinity, S.progress + (performance.now() - S.syncedAt));
 }
@@ -254,9 +258,10 @@ function tick(force) {
 }
 function armRange() { return matchMedia('(orientation: portrait)').matches ? [18, 26] : [23, 31]; }
 function renderArm() {
+  if (S.armDrag) return;
   const [a, b] = armRange();
   const frac = S.duration ? Math.min(1, curProgress() / S.duration) : 0;
-  const ang = (S.isPlaying && !S.lifted) ? a + (b - a) * frac : 0;
+  const ang = ((S.isPlaying || S.armDown) && !S.lifted) ? a + (b - a) * frac : 0;
   $('stage').style.setProperty('--arm-angle', ang.toFixed(2) + 'deg');
 }
 
@@ -520,7 +525,7 @@ function setLyrics(on) {
    Controls (never pretend success: UI only changes after Spotify says OK)
    ===================================================================== */
 async function control(kind) {
-  if (S.demo) return demoControl(kind);
+  if (S.demo) { demoControl(kind); return true; }
   const map = {
     play: ['PUT', '/me/player/play'], pause: ['PUT', '/me/player/pause'],
     next: ['POST', '/me/player/next'], prev: ['POST', '/me/player/previous'],
@@ -534,13 +539,18 @@ async function control(kind) {
       }
       hideNotice();
       setTimeout(poll, 600);
-    } else {
-      toast(explain(r), true);
-      if (r.status === 404) showNotice(explain(r), [{ label: 'Choose device', fn: openDevices }]);
+      return true;
     }
+    if (r.status === 404 && LOCAL.id && kind === 'play') {         // nothing active: start playing here in the browser
+      const t = await api('PUT', '/me/player', { body: { device_ids: [LOCAL.id], play: true } });
+      if (t.ok) { hideNotice(); setTimeout(poll, 800); return true; }
+    }
+    toast(explain(r), true);
+    if (r.status === 404) showNotice(explain(r), [{ label: 'Your playlists', fn: openLibrary }, { label: 'Choose device', fn: openDevices }]);
   } catch (e) {
     if (e instanceof AuthError) showGate({ error: e.message }); else toast('Could not reach Spotify.', true);
   }
+  return false;
 }
 async function seek(ms) {
   if (!S.duration) return;
@@ -553,7 +563,7 @@ async function seek(ms) {
 }
 
 /* ---------- library: browse your playlists and start one ---------- */
-const PL = { list: null, at: 0, ctx: null };
+const PL = { list: null, at: 0, ctx: null, view: 'list', src: null, tracks: [], offset: 0, more: false, loading: false, seq: 0 };
 async function fetchPlaylists() {
   const out = [];
   for (let i = 0; i < 10; i++) {                       // up to 500 playlists
@@ -574,6 +584,7 @@ function libMsg(text, reconnect) {
 async function openLibrary() {
   if (S.demo) return toast('Playlists are not available in demo mode.');
   $('libModal').hidden = false; $('libSearch').value = '';
+  showListView();
   if (PL.list) renderPlaylists(); else libMsg('Loading your playlists…');
   if (PL.list && Date.now() - PL.at < 60000) return;
   try {
@@ -601,7 +612,7 @@ function renderPlaylists() {
   if (!q || 'liked songs'.includes(q)) {
     const d = document.createElement('span'); d.className = 'pl-img liked';
     d.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.2C1 8.6 2.9 5 6.3 5c2 0 3.5 1.1 4.2 2.4h3C14.2 6.1 15.7 5 17.7 5c3.4 0 5.3 3.6 3.9 6.8C19.5 16.4 12 21 12 21z"/></svg>';
-    add(d, 'Liked Songs', 'Your saved tracks', playLiked);
+    add(d, 'Liked Songs', 'Your saved tracks', () => openTracks({ kind: 'liked', name: 'Liked Songs' }));
   }
   const items = (PL.list || []).filter((p) => !q || (p.name || '').toLowerCase().includes(q) || ((p.owner && p.owner.display_name) || '').toLowerCase().includes(q));
   for (const p of items) {
@@ -610,22 +621,114 @@ function renderPlaylists() {
     if (u) img.src = u;
     const total = (p.items && p.items.total) ?? (p.tracks && p.tracks.total);
     const parts = []; if (typeof total === 'number') parts.push(total + ' tracks'); if (p.owner && p.owner.display_name) parts.push('by ' + p.owner.display_name);
-    add(img, p.name || 'Untitled playlist', parts.join(' · '), () => playContext(p.uri, p.name || 'playlist'));
+    add(img, p.name || 'Untitled playlist', parts.join(' · '), () => openTracks({ kind: 'playlist', id: p.id, uri: p.uri, name: p.name || 'Playlist' }));
   }
   if (!list.children.length) libMsg(q ? 'No playlists match “' + q + '”.' : 'No playlists found.');
 }
-async function playLiked() {
-  try {
-    const me = await api('GET', '/me');
-    if (!me.ok || !me.data || !me.data.id) return toast(explain(me), true);
-    playContext('spotify:user:' + me.data.id + ':collection', 'Liked Songs');
-  } catch (e) { if (e instanceof AuthError) showGate({ error: e.message }); else toast('Could not reach Spotify.', true); }
+function showListView() {
+  PL.view = 'list'; PL.seq++; PL.src = null;
+  $('libTitle').textContent = 'Your playlists'; $('btnLibBack').hidden = true;
+  $('libSearch').placeholder = 'Search your library'; $('plList').scrollTop = 0;
 }
-async function playContext(uri, name, deviceId) {
+const mmss = (ms) => { const s = Math.round(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+function normTrack(it) {
+  const t = it && (it.item || it.track || it);
+  if (!t || !t.uri || it.is_local || t.is_local) return null;
+  const imgs = (t.album && t.album.images) || t.images || [];
+  return {
+    uri: t.uri, id: t.id || t.uri.split(':').pop(), name: t.name || 'Unknown',
+    artists: t.type === 'episode' ? ((t.show && t.show.name) || '') : (t.artists || []).map((x) => x.name).join(', '),
+    img: imgs.length ? imgs[imgs.length - 1].url : null, dur: t.duration_ms || 0,
+  };
+}
+async function openTracks(src) {
+  PL.view = 'tracks'; PL.src = src; PL.tracks = []; PL.offset = 0; PL.more = false; PL.error = null; const my = ++PL.seq;
+  $('libTitle').textContent = src.name; $('btnLibBack').hidden = false;
+  $('libSearch').value = ''; $('libSearch').placeholder = 'Search in ' + src.name; $('plList').scrollTop = 0;
+  libMsg('Loading songs…');
+  await loadTracks(my);
+}
+async function loadTracks(my) {
+  if (PL.loading) return;
+  const src = PL.src; if (!src) return;
+  PL.loading = true;
   try {
-    const r = await api('PUT', '/me/player/play', { query: deviceId ? { device_id: deviceId } : undefined, body: { context_uri: uri } });
-    if (r.ok) { PL.ctx = null; $('libModal').hidden = true; $('devicesModal').hidden = true; hideNotice(); toast('Playing ' + name); setTimeout(poll, 800); }
-    else if (r.status === 404) { PL.ctx = { uri, name }; $('libModal').hidden = true; toast('No active device. Pick where to play ' + name + '.', true); openDevices(); }
+    let r;
+    if (src.kind === 'liked') r = await api('GET', '/me/tracks', { query: { limit: 50, offset: PL.offset } });
+    else {
+      r = await api('GET', '/playlists/' + src.id + '/items', { query: { limit: 50, offset: PL.offset, additional_types: 'track' } });
+      if (!r.ok && (r.status === 404 || r.status === 400)) r = await api('GET', '/playlists/' + src.id + '/tracks', { query: { limit: 50, offset: PL.offset } });
+    }
+    if (my !== PL.seq) return;
+    if (!r.ok) {
+      PL.error = { status: r.status, text: (r.status === 403 && src.kind !== 'liked')
+        ? 'Spotify doesn’t let NEEDLE read the songs of this playlist (this can happen with playlists you don’t own). You can still play the whole playlist.'
+        : r.status === 403 ? 'NEEDLE needs permission to read your saved songs. Reconnect Spotify once to allow it.' : explain(r) };
+      PL.more = false;
+    } else {
+      const items = (r.data && r.data.items) || [];
+      PL.tracks.push(...items.map(normTrack).filter(Boolean));
+      PL.offset += items.length; PL.more = !!(r.data && r.data.next) && items.length > 0;
+    }
+    renderTracks();
+  } catch (e) {
+    if (my !== PL.seq) return;
+    if (e instanceof AuthError) { $('libModal').hidden = true; showGate({ error: e.message }); }
+    else { PL.error = { text: 'Could not load songs. Check your connection and try again.' }; renderTracks(); }
+  } finally { PL.loading = false; }
+}
+async function loadAllTracks() {                         // so search covers the whole playlist
+  const my = PL.seq;
+  for (let i = 0; i < 20 && PL.more && my === PL.seq; i++) { await loadTracks(my); await sleep(0); }
+}
+function renderTracks() {
+  const src = PL.src, q = $('libSearch').value.trim().toLowerCase(), list = $('plList'), keep = list.scrollTop;
+  list.innerHTML = '';
+  const bar = document.createElement('li'); bar.className = 'pl-actions';
+  const mkBtn = (label, cls, fn) => { const b = document.createElement('button'); b.textContent = label; if (cls) b.className = cls; b.onclick = fn; bar.appendChild(b); };
+  if (src.kind === 'playlist') {
+    mkBtn('▶  Play all', 'primary', () => playBody({ context_uri: src.uri }, src.name));
+    mkBtn('⤮  Shuffle', '', () => playBody({ context_uri: src.uri }, src.name, null, true));
+  } else if (PL.tracks.length) {
+    const uris = () => PL.tracks.slice(0, 100).map((t) => t.uri);
+    mkBtn('▶  Play all', 'primary', () => playBody({ uris: uris() }, src.name));
+    mkBtn('⤮  Shuffle', '', () => playBody({ uris: uris() }, src.name, null, true));
+  }
+  if (bar.children.length) list.appendChild(bar);
+  const shown = PL.tracks.filter((t) => !q || t.name.toLowerCase().includes(q) || t.artists.toLowerCase().includes(q));
+  for (const t of shown) {
+    const li = document.createElement('li'); if (t.id === S.trackId) li.className = 'now';
+    const b = document.createElement('button'), meta = document.createElement('span'), img = document.createElement('img');
+    img.className = 'tr-img'; img.alt = ''; img.loading = 'lazy'; img.decoding = 'async'; if (t.img) img.src = t.img;
+    meta.className = 'pl-meta';
+    const n = document.createElement('span'); n.className = 'pl-name'; n.textContent = t.name;
+    const s = document.createElement('span'); s.className = 'pl-sub'; s.textContent = t.artists;
+    meta.append(n, s);
+    const d = document.createElement('span'); d.className = 'pl-dur'; d.textContent = t.dur ? mmss(t.dur) : '';
+    b.append(img, meta, d); b.onclick = () => playTrack(t); li.appendChild(b); list.appendChild(li);
+  }
+  if (PL.error) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = PL.error.text;
+    if (PL.error.status === 403 && src.kind === 'liked') { const b = document.createElement('button'); b.className = 'mini'; b.textContent = 'Reconnect Spotify'; b.onclick = login; li.append(document.createElement('br'), b); }
+    list.appendChild(li); }
+  else if (!shown.length && !PL.more) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = q ? 'No songs match “' + q + '”.' : 'This playlist has no songs yet.'; list.appendChild(li); }
+  else if (PL.more) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'Loading more…'; list.appendChild(li); }
+  list.scrollTop = keep;
+}
+function playTrack(t) {
+  const src = PL.src;
+  if (src.kind === 'playlist') return playBody({ context_uri: src.uri, offset: { uri: t.uri } }, t.name);
+  const i = PL.tracks.indexOf(t), from = Math.max(0, Math.min(i, PL.tracks.length - 100));   // Spotify takes up to 100 URIs
+  return playBody({ uris: PL.tracks.slice(from, from + 100).map((x) => x.uri), offset: { uri: t.uri } }, t.name);
+}
+async function playBody(body, name, deviceId, shuffle) {
+  try {
+    const r = await api('PUT', '/me/player/play', { query: deviceId ? { device_id: deviceId } : undefined, body });
+    if (r.ok) {
+      PL.ctx = null; $('libModal').hidden = true; $('devicesModal').hidden = true; hideNotice(); toast('Playing ' + name);
+      if (shuffle) api('PUT', '/me/player/shuffle', { query: { state: 'true' } }).catch(() => {});
+      setTimeout(poll, 800);
+    } else if (r.status === 404 && LOCAL.id && !deviceId) { return playBody(body, name, LOCAL.id, shuffle); }   // no active device: play here
+    else if (r.status === 404) { PL.ctx = { body, name, shuffle }; $('libModal').hidden = true; toast('No active device. Pick where to play ' + name + '.', true); openDevices(); }
     else toast(explain(r), true);
   } catch (e) { if (e instanceof AuthError) showGate({ error: e.message }); else toast('Could not reach Spotify.', true); }
 }
@@ -653,7 +756,7 @@ async function openDevices() {
 }
 function addEmpty(list, text) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = text; list.appendChild(li); }
 async function transfer(d) {
-  if (PL.ctx) { const c = PL.ctx; PL.ctx = null; return playContext(c.uri, c.name, d.id); }   // a playlist is waiting for a device
+  if (PL.ctx) { const c = PL.ctx; PL.ctx = null; return playBody(c.body, c.name, d.id, c.shuffle); }   // a playlist is waiting for a device
   try {
     const r = await api('PUT', '/me/player', { body: { device_ids: [d.id], play: true } });
     if (r.ok) { $('devicesModal').hidden = true; hideNotice(); toast('Playing on ' + d.name); setTimeout(poll, 800); }
@@ -759,6 +862,148 @@ function demoControl(kind) {
 /* =====================================================================
    Wiring
    ===================================================================== */
+/* =====================================================================
+   Turntable gestures
+   - Tonearm: tap it, or drag it on/off the record, to play / pause.
+   - Record: turn it by hand to rewind (anticlockwise) or fast-forward (clockwise).
+   Nothing is faked: the arm and the time only stay put if Spotify accepts the command.
+   ===================================================================== */
+const SCRUB_MS_PER_TURN = 30000;      // one full turn of the record = 30 seconds
+const ARM_ON_DEG = 12;                // dragged past this angle counts as "on the record"
+/* =====================================================================
+   Play audio inside NEEDLE (Spotify Web Playback SDK, Premium only).
+   NEEDLE registers this browser tab as a Spotify device called "NEEDLE".
+   Everything else (play, pause, seek, playlists) keeps using the normal Web API.
+   ===================================================================== */
+const LOCAL = { player: null, id: null, loading: false, err: '', tapped: false, activated: false, t: 0 };
+function localWanted() { return store.get(K.local) !== '0'; }
+function updateLocalUi() {
+  const el = $('localStatus'); if (!el) return;
+  el.textContent = !localWanted() ? 'Off. Audio plays on the device you pick below.'
+    : LOCAL.err ? LOCAL.err
+    : LOCAL.id ? 'Ready. Pick a song and it plays right here. Spotify does not need to be open. Keep this page open while listening.'
+    : S.demo ? 'Not available in demo mode.' : 'Starting…';
+}
+function localFail(msg) { LOCAL.err = msg; LOCAL.loading = false; updateLocalUi(); toast(msg, true); }
+function startLocalPlayer() {
+  if (S.demo || LOCAL.player || LOCAL.loading || !localWanted() || !tokens()) return updateLocalUi();
+  LOCAL.loading = true; LOCAL.err = ''; updateLocalUi();
+  window.onSpotifyWebPlaybackSDKReady = initLocalPlayer;
+  if (window.Spotify) return initLocalPlayer();
+  if (document.getElementById('sdkScript')) return;
+  const s = document.createElement('script');
+  s.id = 'sdkScript'; s.src = 'https://sdk.scdn.co/spotify-player.js'; s.async = true;
+  s.onerror = () => { LOCAL.loading = false; LOCAL.err = 'Couldn’t load Spotify’s player (check your connection or ad blocker).'; updateLocalUi(); };
+  document.head.appendChild(s);
+}
+function initLocalPlayer() {
+  if (LOCAL.player || !localWanted()) { LOCAL.loading = false; return; }
+  const p = new Spotify.Player({ name: 'NEEDLE', volume: 0.85, getOAuthToken: (cb) => { getToken().then(cb).catch(() => {}); } });
+  p.addListener('ready', ({ device_id }) => { LOCAL.id = device_id; LOCAL.loading = false; LOCAL.err = ''; updateLocalUi(); setTimeout(poll, 300); });
+  p.addListener('not_ready', () => { LOCAL.id = null; updateLocalUi(); });
+  p.addListener('initialization_error', ({ message }) => localFail('This browser can’t play Spotify audio itself (' + message + '). Audio will play on the device you pick.'));
+  p.addListener('authentication_error', () => localFail('Spotify rejected the login for in-browser playback. Disconnect and reconnect Spotify.'));
+  p.addListener('account_error', () => localFail('Playing audio in the browser needs Spotify Premium.'));
+  p.addListener('playback_error', ({ message }) => toast('Playback problem: ' + message, true));
+  p.addListener('player_state_changed', () => { clearTimeout(LOCAL.t); LOCAL.t = setTimeout(poll, 150); });
+  LOCAL.player = p;
+  p.connect().then((ok) => { if (!ok && !LOCAL.err) localFail('Couldn’t start in-browser playback. Audio will play on the device you pick.'); });
+  activateLocal();
+}
+function stopLocalPlayer() {
+  try { if (LOCAL.player) LOCAL.player.disconnect(); } catch { /* ignore */ }
+  LOCAL.player = null; LOCAL.id = null; LOCAL.loading = false; LOCAL.activated = false; LOCAL.err = ''; updateLocalUi();
+}
+function activateLocal() {                                  // mobile Safari only allows audio after a tap
+  if (LOCAL.player && !LOCAL.activated && LOCAL.tapped && LOCAL.player.activateElement) {
+    LOCAL.activated = true; try { LOCAL.player.activateElement(); } catch { /* ignore */ }
+  }
+}
+function bindLocal() {
+  const chk = $('chkLocal'); chk.checked = localWanted();
+  chk.onchange = () => {
+    store.set(K.local, chk.checked ? '1' : '0');
+    if (chk.checked) startLocalPlayer(); else stopLocalPlayer();
+    updateLocalUi();
+  };
+  document.addEventListener('pointerdown', () => { LOCAL.tapped = true; activateLocal(); }, { passive: true });
+  updateLocalUi();
+}
+
+function stageGeom() {
+  const st = $('stage'), r = st.getBoundingClientRect(), cs = getComputedStyle(st);
+  const v = (n) => parseFloat(cs.getPropertyValue(n)), u = r.width / (v('--sw') || 4);
+  return { px: r.left + u * v('--px'), py: r.top + u * v('--py'), cx: r.left + u * v('--vcx'), cy: r.top + u * v('--vcy') };
+}
+async function armSet(on) {
+  if (on === S.isPlaying) return renderArm();
+  if (on) S.armDown = true; else S.lifted = true;
+  renderArm();
+  await control(on ? 'play' : 'pause');
+  S.armDown = false; S.lifted = false; renderArm();
+}
+function bindTurntable() {
+  const arm = $('tonearm'), rec = $('record');
+  let drag = null, sc = null;
+
+  arm.addEventListener('pointerdown', (e) => {
+    if (S.lifted && !S.armDown) return;
+    e.preventDefault(); arm.setPointerCapture(e.pointerId);
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, ang: 0 };
+  });
+  arm.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    if (!drag.moved) {
+      if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 6) return;
+      drag.moved = true; S.armDrag = true; arm.classList.add('drag');
+    }
+    const g = stageGeom();
+    drag.ang = Math.max(0, Math.min(40, Math.atan2(-(e.clientX - g.px), e.clientY - g.py) * 180 / Math.PI));
+    $('stage').style.setProperty('--arm-angle', drag.ang.toFixed(1) + 'deg');
+  });
+  const armEnd = (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const d = drag; drag = null;
+    S.armDrag = false; arm.classList.remove('drag');
+    if (!d.moved) armSet(!S.isPlaying);                    // simple tap toggles
+    else armSet(d.ang >= ARM_ON_DEG);
+  };
+  arm.addEventListener('pointerup', armEnd);
+  arm.addEventListener('pointercancel', (e) => { if (drag && e.pointerId === drag.id) { drag = null; S.armDrag = false; arm.classList.remove('drag'); renderArm(); } });
+
+  const ang = (e, g) => Math.atan2(e.clientY - g.cy, e.clientX - g.cx);
+  rec.addEventListener('pointerdown', (e) => {
+    if (!S.duration || S.lifted || sc) return;
+    const g = stageGeom();
+    sc = { id: e.pointerId, g, last: ang(e, g), x: e.clientX, y: e.clientY, start: curProgress(), acc: 0, moved: false };
+    rec.setPointerCapture(e.pointerId);
+  });
+  rec.addEventListener('pointermove', (e) => {
+    if (!sc || e.pointerId !== sc.id) return;
+    if (!sc.moved) {
+      if (Math.hypot(e.clientX - sc.x, e.clientY - sc.y) < 6) return;
+      sc.moved = true; document.body.classList.add('scrubbing');
+    }
+    const a = ang(e, sc.g); let d = a - sc.last; sc.last = a;
+    if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI;
+    const deg = d * 180 / Math.PI;
+    S.discRot += deg; $('disc').style.rotate = S.discRot.toFixed(2) + 'deg';   // the vinyl follows your finger
+    S.scrub = Math.max(0, Math.min(Math.max(0, S.duration - 1000), sc.start + sc.acc + deg / 360 * SCRUB_MS_PER_TURN));
+    sc.acc = S.scrub - sc.start;
+    tick(true); lyTick(false);
+  });
+  const recEnd = async (e) => {
+    if (!sc || e.pointerId !== sc.id) return;
+    const s = sc; sc = null;
+    document.body.classList.remove('scrubbing');
+    if (!s.moved) return;
+    await seek(Math.round(S.scrub));                       // keeps showing the new time until Spotify answers
+    S.scrub = null; tick(true); lyTick(true);
+  };
+  rec.addEventListener('pointerup', recEnd);
+  rec.addEventListener('pointercancel', (e) => { if (sc && e.pointerId === sc.id) { sc = null; S.scrub = null; document.body.classList.remove('scrubbing'); tick(true); } });
+}
+
 function bind() {
   $('btnPlay').onclick = () => control(S.isPlaying ? 'pause' : 'play');
   $('btnPrev').onclick = () => control('prev');
@@ -781,12 +1026,21 @@ function bind() {
   $('btnDevicesClose').onclick = () => { $('devicesModal').hidden = true; PL.ctx = null; };
   $('btnLibrary').onclick = openLibrary;
   $('btnLibClose').onclick = () => { $('libModal').hidden = true; };
-  $('libSearch').addEventListener('input', () => { if (PL.list) renderPlaylists(); });
+  $('btnLibBack').onclick = () => { showListView(); if (PL.list) renderPlaylists(); };
+  $('libSearch').addEventListener('input', () => {
+    if (PL.view === 'tracks') { renderTracks(); if ($('libSearch').value && PL.more) loadAllTracks(); }
+    else if (PL.list) renderPlaylists();
+  });
+  $('plList').addEventListener('scroll', () => {
+    const l = $('plList');
+    if (PL.view === 'tracks' && PL.more && !PL.loading && l.scrollTop + l.clientHeight > l.scrollHeight - 160) loadTracks(PL.seq);
+  });
+  bindTurntable(); bindLocal();
   $('btnAmbient').onclick = () => setAmbient(!document.body.classList.contains('ambient'));
   const canFs = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
   if (canFs) $('btnFull').onclick = toggleFullscreen; else $('btnFull').hidden = true;
   $('btnLogout').onclick = () => {
-    store.del(K.tokens); PL.list = null; $('libModal').hidden = true; S.isPlaying = false; S.trackId = null; S.track = null; clearTimeout(pollTimer);
+    store.del(K.tokens); stopLocalPlayer(); PL.list = null; $('libModal').hidden = true; S.isPlaying = false; S.trackId = null; S.track = null; clearTimeout(pollTimer);
     lySeq++; LY.id = null; lyClear();
     renderPlaying(); hideNotice(); showGate({});
   };
@@ -828,8 +1082,8 @@ async function init() {
   try { await handleCallback(); }
   catch (e) { return showGate({ error: e.message }); }
   if (!tokens()) return showGate({});
-  if (!hasScopes()) return showGate({ error: 'NEEDLE can now browse your playlists. Please reconnect Spotify once to allow that.' });
-  hideGate(); poll();
+  if (!hasScopes()) return showGate({ error: 'NEEDLE has new features that need extra Spotify permission (playlists, songs and playing audio in the browser). Please reconnect Spotify once to allow that.' });
+  hideGate(); poll(); startLocalPlayer();
 }
 init();
 })();
