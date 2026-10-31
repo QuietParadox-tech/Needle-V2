@@ -8,7 +8,8 @@
    ===================================================================== */
 
 const CFG = Object.assign({ CLIENT_ID: '', POLL_PLAYING_MS: 3000, POLL_PAUSED_MS: 6000 }, window.NEEDLE_CONFIG || {});
-const SCOPES = 'user-read-playback-state user-modify-playback-state';
+const NEED_SCOPES = ['user-read-playback-state', 'user-modify-playback-state', 'playlist-read-private', 'playlist-read-collaborative'];
+const SCOPES = NEED_SCOPES.join(' ');
 const API = 'https://api.spotify.com/v1';
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
 const K = { tokens: 'needle.tokens', verifier: 'needle.verifier', state: 'needle.state', cid: 'needle.clientId', ambient: 'needle.ambient', lyrics: 'needle.lyrics' };
@@ -95,11 +96,13 @@ async function errText(res) {
 }
 
 /* ---------- tokens ---------- */
+function hasScopes() { const t = tokens(), s = (t && t.scope) || ''; return NEED_SCOPES.every((x) => s.split(' ').includes(x)); }
 function tokens() { try { return JSON.parse(store.get(K.tokens) || 'null'); } catch { return null; } }
-function saveTokens(j, oldRefresh) {
+function saveTokens(j, oldRefresh, oldScope) {
   store.set(K.tokens, JSON.stringify({
     access_token: j.access_token,
     refresh_token: j.refresh_token || oldRefresh,
+    scope: j.scope || oldScope || '',
     expires_at: Date.now() + (j.expires_in || 3600) * 1000,
   }));
 }
@@ -117,7 +120,7 @@ function refreshTokens() {
       if (res.status === 400 || res.status === 401) { store.del(K.tokens); throw new AuthError('Your Spotify session ended. Please reconnect.'); }
       throw new Error('Token refresh failed (' + res.status + ')');
     }
-    saveTokens(await res.json(), t.refresh_token);
+    saveTokens(await res.json(), t.refresh_token, t.scope);
   })().finally(() => { refreshing = null; });
   return refreshing;
 }
@@ -221,6 +224,7 @@ function setIdle() {
   S.isPlaying = false; S.syncedAt = performance.now();
   renderPlaying();
   showNotice('Nothing is playing. Open Spotify on a device and press play, or pick a device to play on.', [
+    { label: 'Your playlists', fn: openLibrary },
     { label: 'Choose device', fn: openDevices },
   ]);
   if (!S.trackId) { setLabel({ title: 'NEEDLE', artists: 'Nothing playing', album: '' }); setBackground(null); }
@@ -548,6 +552,84 @@ async function seek(ms) {
   } catch { toast('Could not reach Spotify.', true); }
 }
 
+/* ---------- library: browse your playlists and start one ---------- */
+const PL = { list: null, at: 0, ctx: null };
+async function fetchPlaylists() {
+  const out = [];
+  for (let i = 0; i < 10; i++) {                       // up to 500 playlists
+    const r = await api('GET', '/me/playlists', { query: { limit: 50, offset: i * 50 } });
+    if (!r.ok) return { error: r };
+    const items = (r.data && r.data.items) || [];
+    out.push(...items.filter(Boolean));
+    if (!r.data.next || !items.length) break;
+  }
+  return { items: out };
+}
+function libMsg(text, reconnect) {
+  const list = $('plList'); list.innerHTML = '';
+  const li = document.createElement('li'); li.className = 'empty'; li.textContent = text;
+  if (reconnect) { const b = document.createElement('button'); b.className = 'mini'; b.textContent = 'Reconnect Spotify'; b.onclick = login; li.appendChild(document.createElement('br')); li.appendChild(b); }
+  list.appendChild(li);
+}
+async function openLibrary() {
+  if (S.demo) return toast('Playlists are not available in demo mode.');
+  $('libModal').hidden = false; $('libSearch').value = '';
+  if (PL.list) renderPlaylists(); else libMsg('Loading your playlists…');
+  if (PL.list && Date.now() - PL.at < 60000) return;
+  try {
+    const r = await fetchPlaylists();
+    if (r.error) {
+      const forbidden = r.error.status === 403 || r.error.status === 401;
+      if (!PL.list) libMsg(forbidden ? 'NEEDLE needs permission to read your playlists. Reconnect Spotify once to allow it.' : explain(r.error), forbidden);
+      return;
+    }
+    PL.list = r.items; PL.at = Date.now(); renderPlaylists();
+  } catch (e) {
+    if (e instanceof AuthError) { $('libModal').hidden = true; showGate({ error: e.message }); }
+    else if (!PL.list) libMsg('Could not load playlists. Check your connection and try again.');
+  }
+}
+function renderPlaylists() {
+  const q = $('libSearch').value.trim().toLowerCase(), list = $('plList'); list.innerHTML = '';
+  const add = (img, name, sub, fn) => {
+    const li = document.createElement('li'), b = document.createElement('button'), meta = document.createElement('span');
+    meta.className = 'pl-meta';
+    const n = document.createElement('span'); n.className = 'pl-name'; n.textContent = name;
+    const s = document.createElement('span'); s.className = 'pl-sub'; s.textContent = sub;
+    meta.append(n, s); b.append(img, meta); b.onclick = fn; li.appendChild(b); list.appendChild(li);
+  };
+  if (!q || 'liked songs'.includes(q)) {
+    const d = document.createElement('span'); d.className = 'pl-img liked';
+    d.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.2C1 8.6 2.9 5 6.3 5c2 0 3.5 1.1 4.2 2.4h3C14.2 6.1 15.7 5 17.7 5c3.4 0 5.3 3.6 3.9 6.8C19.5 16.4 12 21 12 21z"/></svg>';
+    add(d, 'Liked Songs', 'Your saved tracks', playLiked);
+  }
+  const items = (PL.list || []).filter((p) => !q || (p.name || '').toLowerCase().includes(q) || ((p.owner && p.owner.display_name) || '').toLowerCase().includes(q));
+  for (const p of items) {
+    const img = document.createElement('img'); img.className = 'pl-img'; img.alt = ''; img.loading = 'lazy'; img.decoding = 'async';
+    const u = p.images && p.images.length ? (p.images[p.images.length - 1].url) : null;
+    if (u) img.src = u;
+    const total = (p.items && p.items.total) ?? (p.tracks && p.tracks.total);
+    const parts = []; if (typeof total === 'number') parts.push(total + ' tracks'); if (p.owner && p.owner.display_name) parts.push('by ' + p.owner.display_name);
+    add(img, p.name || 'Untitled playlist', parts.join(' · '), () => playContext(p.uri, p.name || 'playlist'));
+  }
+  if (!list.children.length) libMsg(q ? 'No playlists match “' + q + '”.' : 'No playlists found.');
+}
+async function playLiked() {
+  try {
+    const me = await api('GET', '/me');
+    if (!me.ok || !me.data || !me.data.id) return toast(explain(me), true);
+    playContext('spotify:user:' + me.data.id + ':collection', 'Liked Songs');
+  } catch (e) { if (e instanceof AuthError) showGate({ error: e.message }); else toast('Could not reach Spotify.', true); }
+}
+async function playContext(uri, name, deviceId) {
+  try {
+    const r = await api('PUT', '/me/player/play', { query: deviceId ? { device_id: deviceId } : undefined, body: { context_uri: uri } });
+    if (r.ok) { PL.ctx = null; $('libModal').hidden = true; $('devicesModal').hidden = true; hideNotice(); toast('Playing ' + name); setTimeout(poll, 800); }
+    else if (r.status === 404) { PL.ctx = { uri, name }; $('libModal').hidden = true; toast('No active device. Pick where to play ' + name + '.', true); openDevices(); }
+    else toast(explain(r), true);
+  } catch (e) { if (e instanceof AuthError) showGate({ error: e.message }); else toast('Could not reach Spotify.', true); }
+}
+
 /* ---------- devices ---------- */
 async function openDevices() {
   if (S.demo) return toast('Devices are not available in demo mode.');
@@ -571,6 +653,7 @@ async function openDevices() {
 }
 function addEmpty(list, text) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = text; list.appendChild(li); }
 async function transfer(d) {
+  if (PL.ctx) { const c = PL.ctx; PL.ctx = null; return playContext(c.uri, c.name, d.id); }   // a playlist is waiting for a device
   try {
     const r = await api('PUT', '/me/player', { body: { device_ids: [d.id], play: true } });
     if (r.ok) { $('devicesModal').hidden = true; hideNotice(); toast('Playing on ' + d.name); setTimeout(poll, 800); }
@@ -695,12 +778,15 @@ function bind() {
   });
   addEventListener('resize', () => { if (S.lyricsOn) lyCenter(true); });
   setInterval(() => { if (!document.hidden) lyTick(false); }, 200);
-  $('btnDevicesClose').onclick = () => { $('devicesModal').hidden = true; };
+  $('btnDevicesClose').onclick = () => { $('devicesModal').hidden = true; PL.ctx = null; };
+  $('btnLibrary').onclick = openLibrary;
+  $('btnLibClose').onclick = () => { $('libModal').hidden = true; };
+  $('libSearch').addEventListener('input', () => { if (PL.list) renderPlaylists(); });
   $('btnAmbient').onclick = () => setAmbient(!document.body.classList.contains('ambient'));
   const canFs = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
   if (canFs) $('btnFull').onclick = toggleFullscreen; else $('btnFull').hidden = true;
   $('btnLogout').onclick = () => {
-    store.del(K.tokens); S.isPlaying = false; S.trackId = null; S.track = null; clearTimeout(pollTimer);
+    store.del(K.tokens); PL.list = null; $('libModal').hidden = true; S.isPlaying = false; S.trackId = null; S.track = null; clearTimeout(pollTimer);
     lySeq++; LY.id = null; lyClear();
     renderPlaying(); hideNotice(); showGate({});
   };
@@ -716,6 +802,8 @@ function bind() {
   document.addEventListener('keydown', (e) => {
     if (e.target && e.target.tagName === 'INPUT') return;
     if (e.code === 'Space') { e.preventDefault(); control(S.isPlaying ? 'pause' : 'play'); }
+    else if (e.key === 'Escape') { $('libModal').hidden = true; $('devicesModal').hidden = true; PL.ctx = null; }
+    else if (e.key === 'p' || e.key === 'P') openLibrary();
     else if (e.key === 'ArrowRight') control('next');
     else if (e.key === 'ArrowLeft') control('prev');
     else if (e.key === 'l' || e.key === 'L') setLyrics(!S.lyricsOn);
@@ -740,6 +828,7 @@ async function init() {
   try { await handleCallback(); }
   catch (e) { return showGate({ error: e.message }); }
   if (!tokens()) return showGate({});
+  if (!hasScopes()) return showGate({ error: 'NEEDLE can now browse your playlists. Please reconnect Spotify once to allow that.' });
   hideGate(); poll();
 }
 init();

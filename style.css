@@ -279,6 +279,24 @@ button.icon.on{background:rgba(240,227,199,.2)}
   .ly-credit{bottom:auto;top:2.4cqw}
 }
 
+/* ---------- playlist browser ---------- */
+#libModal .card{width:min(100%,540px);max-height:min(88vh,740px);display:flex;flex-direction:column;text-align:left;padding:22px 16px 10px}
+#libModal h2{text-align:center;margin-bottom:12px}
+#libSearch{width:100%;padding:11px 12px;border-radius:10px;border:1px solid rgba(240,227,199,.25);background:rgba(0,0,0,.35);color:var(--cream);font:inherit;font-size:15px;-webkit-user-select:text;user-select:text;-webkit-appearance:none;appearance:none}
+#libSearch::placeholder{color:rgba(240,227,199,.45)}
+#plList{list-style:none;margin:10px 0 0;padding:0;overflow-y:auto;flex:1;min-height:120px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+#plList li button{width:100%;display:flex;align-items:center;gap:12px;padding:8px;border:0;border-radius:12px;background:transparent;cursor:pointer;text-align:left}
+#plList li button:active{background:rgba(240,227,199,.12)}
+#plList .empty{opacity:.75;font-size:14px;line-height:1.45;padding:14px 6px;text-align:center}
+#plList .empty .mini{margin-top:10px}
+.pl-img{width:54px;height:54px;flex:none;border-radius:6px;object-fit:cover;background:linear-gradient(135deg,#6b4a30,#2a1b12);box-shadow:0 2px 8px rgba(0,0,0,.35)}
+.pl-img.liked{display:grid;place-items:center;background:linear-gradient(135deg,#d9bb74,#7a5f2a);color:#2a1a10}
+.pl-img.liked svg{width:24px;height:24px;fill:currentColor}
+.pl-meta{min-width:0;display:flex;flex-direction:column;gap:3px}
+.pl-name,.pl-sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-name{font-size:15px;font-weight:600}
+.pl-sub{font-size:12px;opacity:.6}
+
 /* ---------- slow, luxe record ---------- */
 :root{ --spin:10s; --gold:#d9bb74; --gold-hi:#f4e2b0; --gold-lo:#7a5f2a; }
 #disc{animation-duration:var(--spin)}

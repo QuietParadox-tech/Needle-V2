@@ -82,6 +82,7 @@
     <span id="deviceCap" class="cap"></span>
   </div>
   <div class="tools">
+    <button class="icon sm" id="btnLibrary" title="Your playlists (P)" aria-label="Browse your playlists"><svg viewBox="0 0 24 24"><path d="M4 6h12M4 11h12M4 16h7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M16 14.5l5 3-5 3z" fill="currentColor"/></svg></button>
     <button class="icon sm" id="btnLyrics" title="Lyrics (L)" aria-label="Show lyrics" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 10h10M4 15h16M4 20h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
     <button class="icon sm" id="btnDevices"title="Choose playback device" aria-label="Choose playback device"><svg viewBox="0 0 24 24"><path d="M4 6h16v10H4zM2 18h20v2H2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></button>
     <button class="icon sm" id="btnAmbient" title="Ambient mode (A)" aria-label="Ambient mode"><svg viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg></button>
@@ -128,6 +129,15 @@
     <button class="cta" id="btnConnect">Connect Spotify</button>
     <button class="linkish" id="btnDemo">Preview with demo tracks</button>
     <p class="fine">Needs Spotify Premium for playback control. NEEDLE only asks to read and control your playback.</p>
+  </div>
+</section>
+
+<section id="libModal" class="modal" hidden>
+  <div class="card">
+    <h2>Your playlists</h2>
+    <input id="libSearch" type="search" placeholder="Search your library" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Search your playlists">
+    <ul id="plList"></ul>
+    <button class="linkish" id="btnLibClose">Close</button>
   </div>
 </section>
 

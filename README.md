@@ -9,7 +9,7 @@ NEEDLE **displays and remote-controls** Spotify. The audio plays on whichever de
 - **Auth:** Authorization Code + PKCE only. The implicit grant and `localhost` / plain-HTTP redirect URIs were removed on 27 Nov 2025. NEEDLE uses PKCE, so there is **no client secret** anywhere.
 - **Development Mode (Feb/Mar 2026 rules):** the app *owner* must have Premium; one Client ID per developer; max **5 authorized users** per app; some endpoints were removed. The player endpoints NEEDLE uses (`/me/player`, `/play`, `/pause`, `/next`, `/previous`, `/seek`, `/devices`) were not on the removal list I found, but I could not test against a live account, so verify on first run.
 - **Playback control needs Premium** (you have it). Spotify can also refuse commands during ads or on some devices; NEEDLE shows the error and never fakes success.
-- **Scopes requested:** `user-read-playback-state`, `user-modify-playback-state`. Nothing else.
+- **Scopes requested:** `user-read-playback-state`, `user-modify-playback-state`, `playlist-read-private`, `playlist-read-collaborative` (the last two list your playlists). Nothing else.
 
 ## 1. Create the Spotify app (once)
 
@@ -47,8 +47,9 @@ Local test instead: `python3 -m http.server 8080 --bind 127.0.0.1`, then open `h
 
 - Vinyl spins while playing, stops on pause; tonearm lifts and drops on track change and slowly tracks across the record.
 - Sleeve, label and background update with each track; colours are sampled from the real cover art.
+- Playlists: the list icon (or **P**) opens your library, with search. Tap a playlist (or Liked Songs) to start it. If no device is active, NEEDLE asks where to play and then starts it there. If you connected before this feature existed, NEEDLE asks you to reconnect once to grant playlist access.
 - Lyrics: the lines icon (or **L**) blurs the album sleeve and shows time-synced lyrics on it while the record keeps spinning. The current line is highlighted and scrolls with the song; tap any line to jump there. Your choice is remembered. Tracks with only unsynced lyrics show as a scrollable page; instrumentals and tracks with no match say so.
-- Controls: play/pause, previous, next, click-to-seek, device picker. Keyboard: Space, ← →, L (lyrics), A (ambient), F (fullscreen).
+- Controls: play/pause, previous, next, click-to-seek, device picker. Keyboard: Space, ← →, P (playlists), L (lyrics), A (ambient), F (fullscreen).
 - Polls Spotify every 3 s (6 s paused) and interpolates progress locally; pauses polling when the tab is hidden.
 - Demo mode (`?demo`, or the link on the first screen) uses made-up tracks and is labelled as such.
 
