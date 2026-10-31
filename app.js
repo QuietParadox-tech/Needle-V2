@@ -12,7 +12,7 @@ const NEED_SCOPES = ['user-read-playback-state', 'user-modify-playback-state', '
 const SCOPES = NEED_SCOPES.join(' ');
 const API = 'https://api.spotify.com/v1';
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
-const K = { tokens: 'needle.tokens', verifier: 'needle.verifier', state: 'needle.state', cid: 'needle.clientId', ambient: 'needle.ambient', lyrics: 'needle.lyrics', local: 'needle.local' };
+const K = { tokens: 'needle.tokens', verifier: 'needle.verifier', state: 'needle.state', cid: 'needle.clientId', ambient: 'needle.ambient', lyrics: 'needle.lyrics', local: 'needle.local', sfx: 'needle.sfx' };
 
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -948,8 +948,89 @@ function bindLocal() {
     if (chk.checked) startLocalPlayer(); else stopLocalPlayer();
     updateLocalUi();
   };
-  for (const ev of ['click', 'pointerup', 'touchend']) document.addEventListener(ev, activateLocal, { capture: true, passive: true });
+  for (const ev of ['click', 'pointerup', 'touchend']) document.addEventListener(ev, () => { activateLocal(); sfxUnlock(); }, { capture: true, passive: true });
+  SFX.on = store.get(K.sfx) !== '0';
+  $('btnSfx').classList.toggle('on', SFX.on); $('btnSfx').classList.toggle('off', !SFX.on); $('btnSfx').setAttribute('aria-pressed', String(SFX.on));
+  $('btnSfx').onclick = () => setSfx(!SFX.on);
   updateLocalUi();
+}
+
+/* =====================================================================
+   Vinyl scratch sounds while you turn the record by hand.
+   Synthesised in the page with Web Audio (no audio files). It cannot touch Spotify's
+   own audio, so it is the *sound of the record being moved*: rubbing noise + a pitched
+   whirr that follow how fast you turn, brighter going forward and darker going back,
+   with surface crackle and a soft thump when you let go.
+   ===================================================================== */
+/* SFX-START */
+function makeSfx(ctx) {
+  const sr = ctx.sampleRate;
+  const nb = ctx.createBuffer(1, sr * 2, sr), nd = nb.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const cb = ctx.createBuffer(1, sr * 2, sr), cd = cb.getChannelData(0);
+  for (let i = 0; i < cd.length; i++) {
+    cd[i] = (Math.random() * 2 - 1) * 0.02;                                   // faint hiss
+    if (Math.random() < 0.0007) {                                              // a pop or crackle
+      const amp = (0.4 + Math.random() * 0.6) * (Math.random() < 0.5 ? -1 : 1);
+      for (let k = 0; k < 40 && i + k < cd.length; k++) cd[i + k] += amp * Math.exp(-k / 6);
+    }
+  }
+  const loop = (buf) => { const s = ctx.createBufferSource(); s.buffer = buf; s.loop = true; s.start(); return s; };
+  const gain = (v) => { const g = ctx.createGain(); g.gain.value = v; return g; };
+  const filt = (type, f, q) => { const b = ctx.createBiquadFilter(); b.type = type; b.frequency.value = f; if (q) b.Q.value = q; return b; };
+  const master = gain(0.8), comp = ctx.createDynamicsCompressor();
+  master.connect(comp); comp.connect(ctx.destination);
+  const gN = gain(0), bp = filt('bandpass', 800, 1.6);                         // rubbing / swish
+  loop(nb).connect(bp); bp.connect(gN); gN.connect(master);
+  const gS = gain(0), lp = filt('lowpass', 900), osc = ctx.createOscillator(); // pitched whirr
+  osc.type = 'sawtooth'; osc.frequency.value = 80; osc.connect(lp); lp.connect(gS); gS.connect(master); osc.start();
+  const gC = gain(0), hp = filt('highpass', 700), cr = loop(cb);               // surface crackle
+  cr.connect(hp); hp.connect(gC); gC.connect(master);
+  const T = (p, v, tc) => p.setTargetAtTime(v, ctx.currentTime, tc);
+  return {
+    set(vel) {                                                                 // vel: degrees/second, + = forward
+      const n = Math.min(1, Math.abs(vel) / 900), fwd = vel >= 0, g = Math.pow(n, 0.6);
+      T(gN.gain, g * 0.9, 0.02); T(bp.frequency, fwd ? 500 + n * 3500 : 300 + n * 2000, 0.02);
+      T(osc.frequency, fwd ? 70 + n * 520 : 55 + n * 330, 0.03); T(gS.gain, g * 0.18, 0.03);
+      T(cr.playbackRate, 0.5 + n * 2.8, 0.03); T(gC.gain, 0.05 + n * 0.65, 0.03);
+    },
+    stop() {                                                                   // fade out + soft needle thump
+      T(gN.gain, 0, 0.03); T(gS.gain, 0, 0.03); T(gC.gain, 0, 0.05);
+      const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.setValueAtTime(95, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.14);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.9, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+      o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.2);
+    },
+  };
+}
+/* SFX-END */
+const SFX = { ctx: null, fx: null, on: true, vel: 0, t: 0, run: false };
+function sfxUnlock() {                                       // iOS only allows audio contexts to start from a tap
+  if (!SFX.on) return;
+  try {
+    if (!SFX.ctx) { const AC = window.AudioContext || window.webkitAudioContext; if (!AC) { SFX.on = false; return; } SFX.ctx = new AC(); SFX.fx = makeSfx(SFX.ctx); }
+    if (SFX.ctx.state === 'suspended') SFX.ctx.resume();
+  } catch { SFX.on = false; }
+}
+function sfxStart() { if (!SFX.on || !SFX.fx) return; SFX.run = true; SFX.vel = 0; SFX.t = performance.now(); sfxFrame(); }
+function sfxFrame() {
+  requestAnimationFrame(() => {
+    if (!SFX.run) return;
+    if (performance.now() - SFX.t > 70) SFX.vel *= 0.78;     // finger stopped: the sound dies away
+    if (SFX.fx && SFX.ctx.state === 'running') SFX.fx.set(SFX.vel);
+    sfxFrame();
+  });
+}
+function sfxStop() {
+  if (!SFX.run) return;
+  SFX.run = false; SFX.vel = 0;
+  if (SFX.fx && SFX.ctx.state === 'running') SFX.fx.stop();
+}
+function setSfx(on) {
+  SFX.on = on; store.set(K.sfx, on ? '1' : '0');
+  const b = $('btnSfx'); b.classList.toggle('on', on); b.classList.toggle('off', !on); b.setAttribute('aria-pressed', String(on));
+  if (on) sfxUnlock(); else sfxStop();
+  toast(on ? 'Vinyl sounds on' : 'Vinyl sounds off');
 }
 
 function stageGeom() {
@@ -996,19 +1077,22 @@ function bindTurntable() {
   const ang = (e, g) => Math.atan2(e.clientY - g.cy, e.clientX - g.cx);
   rec.addEventListener('pointerdown', (e) => {
     if (!S.duration || S.lifted || sc) return;
+    sfxUnlock();
     const g = stageGeom();
-    sc = { id: e.pointerId, g, last: ang(e, g), x: e.clientX, y: e.clientY, start: curProgress(), acc: 0, moved: false };
+    sc = { id: e.pointerId, g, last: ang(e, g), x: e.clientX, y: e.clientY, start: curProgress(), acc: 0, moved: false, t: performance.now() };
     rec.setPointerCapture(e.pointerId);
   });
   rec.addEventListener('pointermove', (e) => {
     if (!sc || e.pointerId !== sc.id) return;
     if (!sc.moved) {
       if (Math.hypot(e.clientX - sc.x, e.clientY - sc.y) < 6) return;
-      sc.moved = true; document.body.classList.add('scrubbing');
+      sc.moved = true; document.body.classList.add('scrubbing'); sfxStart();
     }
     const a = ang(e, sc.g); let d = a - sc.last; sc.last = a;
     if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI;
     const deg = d * 180 / Math.PI;
+    const now = performance.now(), dt = Math.max(8, now - sc.t); sc.t = now; SFX.t = now;
+    SFX.vel = SFX.vel * 0.6 + (deg / dt * 1000) * 0.4;      // smoothed turning speed for the sound
     S.discRot += deg; $('disc').style.rotate = S.discRot.toFixed(2) + 'deg';   // the vinyl follows your finger
     S.scrub = Math.max(0, Math.min(Math.max(0, S.duration - 1000), sc.start + sc.acc + deg / 360 * SCRUB_MS_PER_TURN));
     sc.acc = S.scrub - sc.start;
@@ -1017,13 +1101,13 @@ function bindTurntable() {
   const recEnd = async (e) => {
     if (!sc || e.pointerId !== sc.id) return;
     const s = sc; sc = null;
-    document.body.classList.remove('scrubbing');
+    document.body.classList.remove('scrubbing'); sfxStop();
     if (!s.moved) return;
     await seek(Math.round(S.scrub));                       // keeps showing the new time until Spotify answers
     S.scrub = null; tick(true); lyTick(true);
   };
   rec.addEventListener('pointerup', recEnd);
-  rec.addEventListener('pointercancel', (e) => { if (sc && e.pointerId === sc.id) { sc = null; S.scrub = null; document.body.classList.remove('scrubbing'); tick(true); } });
+  rec.addEventListener('pointercancel', (e) => { if (sc && e.pointerId === sc.id) { sc = null; S.scrub = null; document.body.classList.remove('scrubbing'); sfxStop(); tick(true); } });
 }
 
 function bind() {
@@ -1080,6 +1164,7 @@ function bind() {
     if (e.code === 'Space') { e.preventDefault(); control(S.isPlaying ? 'pause' : 'play'); }
     else if (e.key === 'Escape') { $('libModal').hidden = true; $('devicesModal').hidden = true; PL.ctx = null; }
     else if (e.key === 'p' || e.key === 'P') openLibrary();
+    else if (e.key === 's' || e.key === 'S') setSfx(!SFX.on);
     else if (e.key === 'ArrowRight') control('next');
     else if (e.key === 'ArrowLeft') control('prev');
     else if (e.key === 'l' || e.key === 'L') setLyrics(!S.lyricsOn);
