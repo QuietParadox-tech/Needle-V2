@@ -216,7 +216,8 @@ function applyPlayer(p) {
   if (!p.item) return setIdle();
   const t = normalize(p.item);
   S.device = p.device || null;
-  S.isPlaying = !!p.is_playing;
+  if (MUTE.on && p.is_playing && !MUTE.retried) { MUTE.retried = true; musicPause().catch(() => {}); }   // pause didn't land yet: ask again
+  S.isPlaying = MUTE.on ? true : !!p.is_playing;   // don't flicker to "paused" while the song is hushed for scrubbing
   if (S.isPlaying) S.expectAt = 0;
   S.progress = p.progress_ms || 0;
   S.duration = t.duration;
@@ -244,7 +245,7 @@ function curProgress() {
    ===================================================================== */
 function renderPlaying() {
   document.body.classList.toggle('playing', S.isPlaying);
-  $('deviceCap').textContent = S.demo ? 'DEMO MODE · not connected to Spotify'
+  $('deviceCap').textContent = MUTE.on ? 'Scrubbing · song paused' : S.demo ? 'DEMO MODE · not connected to Spotify'
     : S.device ? 'On ' + S.device.name : '';
   renderArm(); tick(true); updateWakeLock();
 }
@@ -307,28 +308,51 @@ function clampLum(c, lo, hi) {
   if (l > hi) return c.map((v) => v * hi / l);
   return c;
 }
+function rgb2hsv(c) {
+  const r = c[0] / 255, g = c[1] / 255, b = c[2] / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  let h = 0;
+  if (d) { if (mx === r) h = ((g - b) / d) % 6; else if (mx === g) h = (b - r) / d + 2; else h = (r - g) / d + 4; h *= 60; if (h < 0) h += 360; }
+  return [h, mx ? d / mx : 0, mx];
+}
+const satBoost = (c, k) => { const l = lum(c); return c.map((v) => Math.max(0, Math.min(255, l + (v - l) * k))); };
+// Pull the real colours out of the cover: group pixels by hue, rank groups by how vivid and common they are.
 function paletteFrom(img) {
   try {
-    const N = 28, cv = document.createElement('canvas'); cv.width = cv.height = N;
+    const N = 32, cv = document.createElement('canvas'); cv.width = cv.height = N;
     const cx = cv.getContext('2d', { willReadFrequently: true });
     cx.drawImage(img, 0, 0, N, N);
-    const d = cx.getImageData(0, 0, N, N).data, px = [];
-    for (let i = 0; i < d.length; i += 4) px.push([d[i], d[i + 1], d[i + 2]]);
-    px.sort((a, b) => lum(a) - lum(b));
-    const q = Math.floor(px.length / 4);
-    const dark = avg(px.slice(0, q)), light = avg(px.slice(-q));
-    let w = 0, sum = [0, 0, 0];
-    for (const p of px) {
-      const mx = Math.max(...p), mn = Math.min(...p), s = mx ? (mx - mn) / mx : 0, wt = 0.05 + s * s * (mx / 255);
-      sum = [sum[0] + p[0] * wt, sum[1] + p[1] * wt, sum[2] + p[2] * wt]; w += wt;
+    const d = cx.getImageData(0, 0, N, N).data, B = 18;
+    const bins = Array.from({ length: B }, () => ({ w: 0, s: [0, 0, 0] })), grey = [];
+    for (let i = 0; i < d.length; i += 4) {
+      const p = [d[i], d[i + 1], d[i + 2]], [h, s, v] = rgb2hsv(p);
+      if (s > 0.2 && v > 0.18) { const wt = 0.1 + s * s * v, b = bins[Math.floor(h / (360 / B)) % B]; b.w += wt; b.s[0] += p[0] * wt; b.s[1] += p[1] * wt; b.s[2] += p[2] * wt; }
+      else grey.push(p);
     }
-    const dom = sum.map((v) => v / w);
+    const group = (i) => {                                    // a bin blended with its two neighbours
+      let w = 0, s = [0, 0, 0];
+      for (const k of [-1, 0, 1]) { const b = bins[(i + k + B) % B], f = k === 0 ? 1 : 0.5; w += b.w * f; s = s.map((v, j) => v + b.s[j] * f); }
+      return { i, w, c: w ? s.map((v) => v / w) : [0, 0, 0] };
+    };
+    const gs = bins.map((_, i) => group(i)).filter((g) => g.w > 0).sort((a, b) => b.w - a.w);
+    const far = (g, picked) => picked.every((p) => { const di = Math.abs(g.i - p.i); return Math.min(di, B - di) >= 3; });
+    const picked = [];
+    for (const g of gs) { if (!picked.length || (far(g, picked) && g.w >= gs[0].w * 0.12)) picked.push(g); if (picked.length === 3) break; }
+    const total = bins.reduce((s, b) => s + b.w, 0);
+    let c1, c2, c3;
+    if (!picked.length || total < 1.5) {                      // black & white / very muted cover: use its greys, cooled slightly
+      const g = avg(grey.length ? grey : [[90, 80, 75]]);
+      c1 = mix(g, [70, 80, 110], 0.25); c2 = mix(g, [200, 190, 180], 0.4); c3 = c1;
+    } else {
+      c1 = satBoost(picked[0].c, 1.2);
+      c2 = picked[1] ? satBoost(picked[1].c, 1.2) : mix(satBoost(picked[0].c, 1.3), [255, 235, 210], 0.35);
+      c3 = picked[2] ? satBoost(picked[2].c, 1.2) : c2;
+    }
     return {
-      L: mix(light, BEIGE, 0.6),
-      M: clampLum(mix(dom, BRONZE, 0.45), 55, 120),
-      A: clampLum(mix(dom, AMBER, 0.55), 70, 150),
-      D: mix(dark, UMBER, 0.65),
-      B: mix(light, [190, 165, 130], 0.5),
+      L: clampLum(mix(c2, [255, 244, 230], 0.28), 120, 178),
+      M: clampLum(c1, 55, 118),
+      A: clampLum(c2, 85, 152),
+      D: mix(c1.map((v) => v * 0.2), [12, 9, 7], 0.2),
+      B: clampLum(c3, 80, 150),
     };
   } catch { return DEFAULT_PAL; }
 }
@@ -359,6 +383,7 @@ async function changeTrack(t) {
   if (!first) { stage.classList.add('changing'); S.lifted = true; renderArm(); await sleep(550); if (my !== S.seq) return; }
   setLabel(t);
   lyOnTrack(t);
+  if (Q.open) loadQueue();
   setSleeve(loaded ? t.art : null, loaded ? loaded.cors : false);
   setBackground(loaded && loaded.cors ? paletteFrom(loaded.img) : null);
   if (!first) {
@@ -639,6 +664,63 @@ function renderPlaylists() {
   }
   if (!list.children.length) libMsg(q ? 'No playlists match “' + q + '”.' : 'No playlists found.');
 }
+/* ---------- up next: the current queue ---------- */
+const Q = { open: false, now: null, items: [], err: null, loading: false };
+async function openQueue() {
+  if (S.demo) return toast('The queue is not available in demo mode.');
+  $('queueModal').hidden = false; Q.open = true;
+  if (!Q.items.length && !Q.now) queueMsg('Loading the queue…');
+  await loadQueue();
+}
+function closeQueue() { $('queueModal').hidden = true; Q.open = false; }
+function queueMsg(text) {
+  const l = $('qList'); l.innerHTML = '';
+  const li = document.createElement('li'); li.className = 'empty'; li.textContent = text; l.appendChild(li);
+}
+async function loadQueue() {
+  if (Q.loading) return;
+  Q.loading = true;
+  try {
+    const r = await api('GET', '/me/player/queue');
+    if (!r.ok) { Q.err = r.status === 404 ? 'Nothing is playing yet, so there is no queue.' : explain(r); Q.now = null; Q.items = []; }
+    else { Q.err = null; Q.now = normTrack(r.data && r.data.currently_playing); Q.items = ((r.data && r.data.queue) || []).map(normTrack).filter(Boolean); }
+  } catch (e) {
+    if (e instanceof AuthError) { closeQueue(); showGate({ error: e.message }); return; }
+    Q.err = 'Could not load the queue. Check your connection and try again.'; Q.items = []; Q.now = null;
+  } finally { Q.loading = false; }
+  if (Q.open) renderQueue();
+}
+function renderQueue() {
+  const l = $('qList'); l.innerHTML = '';
+  if (Q.err) return queueMsg(Q.err);
+  const label = (t) => { const li = document.createElement('li'); li.className = 'q-label'; li.textContent = t; l.appendChild(li); };
+  const row = (t, cls, fn) => {
+    const li = document.createElement('li'); if (cls) li.className = cls;
+    const b = document.createElement('button'), meta = document.createElement('span'), img = document.createElement('img');
+    img.className = 'tr-img'; img.alt = ''; img.loading = 'lazy'; img.decoding = 'async'; if (t.img) img.src = t.img;
+    meta.className = 'pl-meta';
+    const n = document.createElement('span'); n.className = 'pl-name'; n.textContent = t.name;
+    const s = document.createElement('span'); s.className = 'pl-sub'; s.textContent = t.artists;
+    meta.append(n, s);
+    const d = document.createElement('span'); d.className = 'pl-dur'; d.textContent = t.dur ? mmss(t.dur) : '';
+    b.append(img, meta, d); if (fn) b.onclick = fn; else b.disabled = true; li.appendChild(b); l.appendChild(li);
+  };
+  if (Q.now) { label('Now playing'); row(Q.now, 'now', null); }
+  if (Q.items.length) { label('Next up · tap a song to skip to it'); Q.items.forEach((t, i) => row(t, '', () => skipTo(i))); }
+  else { const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'Nothing is queued after this song.'; l.appendChild(li); }
+}
+async function skipTo(i) {                                  // Spotify has no "jump to queue item", so skip forward i+1 times
+  closeQueue(); toast('Skipping ahead…');
+  try {
+    for (let k = 0; k <= i; k++) {
+      const r = await api('POST', '/me/player/next');
+      if (!r.ok) { toast(explain(r), true); break; }
+      await sleep(150);
+    }
+  } catch (e) { if (e instanceof AuthError) showGate({ error: e.message }); else toast('Could not reach Spotify.', true); }
+  setTimeout(poll, 500);
+}
+
 function showListView() {
   PL.view = 'list'; PL.seq++; PL.src = null;
   $('libTitle').textContent = 'Your playlists'; $('btnLibBack').hidden = true;
@@ -1033,6 +1115,32 @@ function setSfx(on) {
   toast(on ? 'Vinyl sounds on' : 'Vinyl sounds off');
 }
 
+/* While the record is being turned by hand the song itself is silenced (paused), so only the
+   vinyl sounds are heard. It resumes from the new position when you let go. iOS ignores volume
+   changes from web pages, so this pauses instead of lowering the volume. */
+const MUTE = { on: false, local: false, p: null, retried: false };
+const isLocalActive = () => !!(LOCAL.player && LOCAL.id && S.device && (S.device.id === LOCAL.id || S.device.name === 'NEEDLE'));
+async function musicPause() {
+  if (isLocalActive()) { try { await LOCAL.player.pause(); return; } catch { /* fall back to the Web API */ } }
+  const r = await api('PUT', '/me/player/pause');
+  if (!r.ok && r.status !== 403) toast(explain(r), true);     // 403 = already paused
+}
+function musicHush() {
+  if (S.demo || !S.isPlaying || MUTE.on) return;
+  MUTE.on = true; MUTE.retried = false; MUTE.local = isLocalActive();
+  $('deviceCap').textContent = 'Scrubbing · song paused';
+  MUTE.p = musicPause().catch(() => {});
+}
+async function musicUnhush() {
+  if (!MUTE.on) return;
+  try {
+    await MUTE.p;
+    let done = false;
+    if (MUTE.local) { try { await LOCAL.player.resume(); done = true; } catch { /* fall back below */ } }
+    if (!done) { const r = await api('PUT', '/me/player/play'); if (!r.ok) toast(explain(r), true); }
+  } catch { toast('Couldn’t resume the music. Press play.', true); }
+  finally { MUTE.on = false; renderPlaying(); setTimeout(poll, 400); }
+}
 function stageGeom() {
   const st = $('stage'), r = st.getBoundingClientRect(), cs = getComputedStyle(st);
   const v = (n) => parseFloat(cs.getPropertyValue(n)), u = r.width / (v('--sw') || 4);
@@ -1076,7 +1184,8 @@ function bindTurntable() {
 
   const ang = (e, g) => Math.atan2(e.clientY - g.cy, e.clientX - g.cx);
   rec.addEventListener('pointerdown', (e) => {
-    if (!S.duration || S.lifted || sc) return;
+    if (!S.duration || S.lifted) return;
+    if (sc) { sc = null; S.scrub = null; document.body.classList.remove('scrubbing'); sfxStop(); musicUnhush(); }   // recover from a lost touch
     sfxUnlock();
     const g = stageGeom();
     sc = { id: e.pointerId, g, last: ang(e, g), x: e.clientX, y: e.clientY, start: curProgress(), acc: 0, moved: false, t: performance.now() };
@@ -1085,8 +1194,8 @@ function bindTurntable() {
   rec.addEventListener('pointermove', (e) => {
     if (!sc || e.pointerId !== sc.id) return;
     if (!sc.moved) {
-      if (Math.hypot(e.clientX - sc.x, e.clientY - sc.y) < 6) return;
-      sc.moved = true; document.body.classList.add('scrubbing'); sfxStart();
+      if (Math.hypot(e.clientX - sc.x, e.clientY - sc.y) < 3) return;
+      sc.moved = true; document.body.classList.add('scrubbing'); sfxStart(); musicHush();
     }
     const a = ang(e, sc.g); let d = a - sc.last; sc.last = a;
     if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI;
@@ -1104,10 +1213,11 @@ function bindTurntable() {
     document.body.classList.remove('scrubbing'); sfxStop();
     if (!s.moved) return;
     await seek(Math.round(S.scrub));                       // keeps showing the new time until Spotify answers
-    S.scrub = null; tick(true); lyTick(true);
+    await musicUnhush();                                   // song comes back from the new spot
+    S.syncedAt = performance.now(); S.scrub = null; tick(true); lyTick(true);
   };
   rec.addEventListener('pointerup', recEnd);
-  rec.addEventListener('pointercancel', (e) => { if (sc && e.pointerId === sc.id) { sc = null; S.scrub = null; document.body.classList.remove('scrubbing'); sfxStop(); tick(true); } });
+  rec.addEventListener('pointercancel', (e) => { if (sc && e.pointerId === sc.id) { sc = null; S.scrub = null; document.body.classList.remove('scrubbing'); sfxStop(); tick(true); musicUnhush(); } });
 }
 
 function bind() {
@@ -1131,6 +1241,8 @@ function bind() {
   setInterval(() => { if (!document.hidden) lyTick(false); }, 200);
   $('btnDevicesClose').onclick = () => { $('devicesModal').hidden = true; PL.ctx = null; };
   $('btnLibrary').onclick = openLibrary;
+  $('btnQueue').onclick = openQueue;
+  $('btnQueueClose').onclick = closeQueue;
   $('btnLibClose').onclick = () => { $('libModal').hidden = true; };
   $('btnLibBack').onclick = () => { showListView(); if (PL.list) renderPlaylists(); };
   $('libSearch').addEventListener('input', () => {
@@ -1146,7 +1258,7 @@ function bind() {
   const canFs = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
   if (canFs) $('btnFull').onclick = toggleFullscreen; else $('btnFull').hidden = true;
   $('btnLogout').onclick = () => {
-    store.del(K.tokens); stopLocalPlayer(); PL.list = null; $('libModal').hidden = true; S.isPlaying = false; S.trackId = null; S.track = null; clearTimeout(pollTimer);
+    store.del(K.tokens); stopLocalPlayer(); closeQueue(); Q.now = null; Q.items = []; PL.list = null; $('libModal').hidden = true; S.isPlaying = false; S.trackId = null; S.track = null; clearTimeout(pollTimer);
     lySeq++; LY.id = null; lyClear();
     renderPlaying(); hideNotice(); showGate({});
   };
@@ -1162,7 +1274,8 @@ function bind() {
   document.addEventListener('keydown', (e) => {
     if (e.target && e.target.tagName === 'INPUT') return;
     if (e.code === 'Space') { e.preventDefault(); control(S.isPlaying ? 'pause' : 'play'); }
-    else if (e.key === 'Escape') { $('libModal').hidden = true; $('devicesModal').hidden = true; PL.ctx = null; }
+    else if (e.key === 'q' || e.key === 'Q') openQueue();
+    else if (e.key === 'Escape') { closeQueue(); $('libModal').hidden = true; $('devicesModal').hidden = true; PL.ctx = null; }
     else if (e.key === 'p' || e.key === 'P') openLibrary();
     else if (e.key === 's' || e.key === 'S') setSfx(!SFX.on);
     else if (e.key === 'ArrowRight') control('next');
