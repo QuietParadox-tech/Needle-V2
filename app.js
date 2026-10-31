@@ -263,7 +263,8 @@ function renderArm() {
   if (S.armDrag) return;
   const [a, b] = armRange();
   const frac = S.duration ? Math.min(1, curProgress() / S.duration) : 0;
-  const ang = ((S.isPlaying || S.armDown) && !S.lifted) ? a + (b - a) * frac : 0;
+  const armUp = MUTE.on || (S.demo && document.body.classList.contains('scrubbing'));   // arm lifts while the song is paused for scrubbing
+  const ang = ((S.isPlaying || S.armDown) && !S.lifted && !armUp) ? a + (b - a) * frac : 0;
   $('stage').style.setProperty('--arm-angle', ang.toFixed(2) + 'deg');
 }
 
@@ -1129,6 +1130,7 @@ function musicHush() {
   if (S.demo || !S.isPlaying || MUTE.on) return;
   MUTE.on = true; MUTE.retried = false; MUTE.local = isLocalActive();
   $('deviceCap').textContent = 'Scrubbing · song paused';
+  renderArm();                                              // lift the tonearm off the record
   MUTE.p = musicPause().catch(() => {});
 }
 async function musicUnhush() {
@@ -1195,7 +1197,7 @@ function bindTurntable() {
     if (!sc || e.pointerId !== sc.id) return;
     if (!sc.moved) {
       if (Math.hypot(e.clientX - sc.x, e.clientY - sc.y) < 3) return;
-      sc.moved = true; document.body.classList.add('scrubbing'); sfxStart(); musicHush();
+      sc.moved = true; document.body.classList.add('scrubbing'); sfxStart(); musicHush(); renderArm();
     }
     const a = ang(e, sc.g); let d = a - sc.last; sc.last = a;
     if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI;
