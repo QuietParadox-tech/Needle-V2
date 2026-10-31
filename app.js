@@ -400,7 +400,7 @@ async function changeTrack(t) {
    ===================================================================== */
 const LRC_API = 'https://lrclib.net/api';
 const LY_LEAD = 250;                       // highlight a line slightly early, feels better than late
-const LY = { id: null, lines: null, els: [], idx: -2 };
+const LY = { id: null, lines: null, els: [], idx: -2, manual: false, mt: 0 };
 const lyCache = new Map();
 let lySeq = 0;
 
@@ -468,6 +468,7 @@ function lyClear() {
   $('lyLines').textContent = ''; $('lyLines').style.transform = '';
   $('lyScroll').classList.remove('plain'); $('lyScroll').scrollTop = 0;
   $('lyCredit').textContent = ''; lyStatus('');
+  LY.manual = false; clearTimeout(LY.mt); $('lyNow').classList.remove('show');
 }
 function lyShow(res) {
   lyClear();
@@ -529,14 +530,18 @@ function lyTick(force) {
   LY.els.forEach((el, k) => { el.classList.toggle('cur', k === i); el.classList.toggle('past', k < i); });
   lyCenter(first);
 }
-function lyCenter(snap) {
-  if (!LY.els.length) return;
-  const el = LY.els[Math.max(0, LY.idx)], box = $('lyLines');
-  const y = $('lyScroll').clientHeight * 0.4 - (el.offsetTop + el.offsetHeight / 2);
-  if (snap) box.classList.add('snap');
-  box.style.transform = 'translateY(' + y.toFixed(1) + 'px)';
-  if (snap) { void box.offsetWidth; box.classList.remove('snap'); }
+function lyCenter(snap) {                                    // follow the song: put the current line near the top third
+  if (!LY.els.length || LY.manual) return;
+  const el = LY.els[Math.max(0, LY.idx)], sc = $('lyScroll'), box = $('lyLines');
+  const y = el.getBoundingClientRect().top - box.getBoundingClientRect().top + el.offsetHeight / 2 - sc.clientHeight * 0.4;
+  sc.scrollTo({ top: Math.max(0, y), behavior: snap ? 'auto' : 'smooth' });
 }
+function lyUser() {                                          // you touched/scrolled the lyrics: stop following for a while
+  if (!LY.lines) return;
+  LY.manual = true; $('lyNow').classList.add('show');
+  clearTimeout(LY.mt); LY.mt = setTimeout(lyFollow, 5000);
+}
+function lyFollow() { LY.manual = false; clearTimeout(LY.mt); $('lyNow').classList.remove('show'); lyCenter(false); }
 function setLyrics(on) {
   S.lyricsOn = on;
   document.body.classList.toggle('lyrics', on);
@@ -911,10 +916,17 @@ async function updateWakeLock() {
     else if (!want && wakeLock) { await wakeLock.release(); wakeLock = null; }
   } catch { /* not allowed — ignore */ }
 }
+const FS_HINT = 'For true full screen on iPhone: tap Share, then Add to Home Screen, and open NEEDLE from the Home Screen.';
+function setViewportVars() {                                 // size the scene from the real visible area (fixes stale units on iOS and after fullscreen)
+  const vv = window.visualViewport, w = (vv && vv.width) || innerWidth, h = (vv && vv.height) || innerHeight;
+  const r = document.documentElement.style; r.setProperty('--vw', (w / 100) + 'px'); r.setProperty('--vh', (h / 100) + 'px');
+}
 function toggleFullscreen() {
   const el = document.documentElement;
-  if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-  else (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+  if (document.fullscreenElement || document.webkitFullscreenElement) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!req) return toast(FS_HINT);
+  try { const r = req.call(el); if (r && r.catch) r.catch(() => toast(FS_HINT)); } catch { toast(FS_HINT); }
 }
 
 /* =====================================================================
@@ -1237,9 +1249,14 @@ function bind() {
     if (!el || !LY.lines || el.dataset.i == null) return;
     const b = document.body;
     if (b.classList.contains('ambient') && !b.classList.contains('peek')) return;   // first tap only wakes the UI
-    seek(LY.lines[+el.dataset.i].t);
+    const t = LY.lines[+el.dataset.i].t;
+    lyFollow();
+    seek(t).then(() => { if (!S.isPlaying && S.duration) control('play'); });         // start playing from this line
   });
-  addEventListener('resize', () => { if (S.lyricsOn) lyCenter(true); });
+  const lyScroll = $('lyScroll');
+  for (const ev of ['wheel', 'touchstart', 'pointerdown']) lyScroll.addEventListener(ev, lyUser, { passive: true });
+  lyScroll.addEventListener('scroll', () => { if (LY.manual) { clearTimeout(LY.mt); LY.mt = setTimeout(lyFollow, 5000); } }, { passive: true });
+  $('lyNow').onclick = lyFollow;
   setInterval(() => { if (!document.hidden) lyTick(false); }, 200);
   $('btnDevicesClose').onclick = () => { $('devicesModal').hidden = true; PL.ctx = null; };
   $('btnLibrary').onclick = openLibrary;
@@ -1257,8 +1274,13 @@ function bind() {
   });
   bindTurntable(); bindLocal();
   $('btnAmbient').onclick = () => setAmbient(!document.body.classList.contains('ambient'));
-  const canFs = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
-  if (canFs) $('btnFull').onclick = toggleFullscreen; else $('btnFull').hidden = true;
+  const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches;
+  if (standalone) $('btnFull').hidden = true; else $('btnFull').onclick = toggleFullscreen;   // already full screen when launched from the Home Screen
+  setViewportVars();
+  for (const ev of ['resize', 'orientationchange', 'fullscreenchange', 'webkitfullscreenchange']) addEventListener(ev, () => { setViewportVars(); setTimeout(setViewportVars, 250); if (S.lyricsOn) lyCenter(true); });
+  document.addEventListener('fullscreenchange', () => { setViewportVars(); renderArm(); });
+  document.addEventListener('webkitfullscreenchange', () => { setViewportVars(); renderArm(); });
+  if (window.visualViewport) visualViewport.addEventListener('resize', setViewportVars);
   $('btnLogout').onclick = () => {
     store.del(K.tokens); stopLocalPlayer(); closeQueue(); Q.now = null; Q.items = []; PL.list = null; $('libModal').hidden = true; S.isPlaying = false; S.trackId = null; S.track = null; clearTimeout(pollTimer);
     lySeq++; LY.id = null; lyClear();
@@ -1284,7 +1306,7 @@ function bind() {
     else if (e.key === 'ArrowLeft') control('prev');
     else if (e.key === 'l' || e.key === 'L') setLyrics(!S.lyricsOn);
     else if (e.key === 'a' || e.key === 'A')setAmbient(!document.body.classList.contains('ambient'));
-    else if ((e.key === 'f' || e.key === 'F') && canFs) toggleFullscreen();
+    else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
   });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) { clearTimeout(pollTimer); updateWakeLock(); }

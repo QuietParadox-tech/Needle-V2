@@ -1,6 +1,7 @@
 :root{
   --vh:1vh;
-  --u:min(25vw, calc(var(--vh) * 33.3333));
+  --vw:1vw;
+  --u:min(calc(var(--vw) * 25), calc(var(--vh) * 33.3333));
   --cream:#f0e3c7;
   --sw:4; --sh:3;
   --sl:.1; --st:.525; --ss:1.95;
@@ -11,7 +12,7 @@
 @supports (height:1dvh){ :root{ --vh:1dvh; } }
 @media (orientation:portrait){
   :root{
-    --u:min(33.3333vw, calc(var(--vh) * 25));
+    --u:min(calc(var(--vw) * 33.3333), calc(var(--vh) * 25));
     --sw:3; --sh:4;
     --sl:.15; --st:.3; --ss:1.8;
     --vcx:1.6; --vcy:2.65; --vd:2;
@@ -21,7 +22,7 @@
 
 *{box-sizing:border-box}
 html,body{
-  margin:0;height:100%;overflow:hidden;background:#1b120c;color:var(--cream);
+  margin:0;height:100%;overflow:hidden;overscroll-behavior:none;background:#1b120c;color:var(--cream);
   font-family:"Avenir Next","SF Pro Display",-apple-system,"Helvetica Neue",Inter,system-ui,sans-serif;
   -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;
   -webkit-text-size-adjust:100%;
@@ -223,13 +224,14 @@ body.lyrics .art.show{transform:scale(1.12)}
 body.lyrics .ly-layer{opacity:1;visibility:visible;pointer-events:auto;transition-delay:0s}
 
 .ly-scroll{
-  position:absolute;inset:0;overflow:hidden;
+  position:absolute;inset:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;scrollbar-width:none;
   -webkit-mask-image:linear-gradient(transparent 0,#000 17%,#000 80%,transparent 100%);
           mask-image:linear-gradient(transparent 0,#000 17%,#000 80%,transparent 100%);
 }
 .ly-scroll.plain{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;scrollbar-width:none}
 .ly-scroll.plain::-webkit-scrollbar{display:none}
-.ly-lines{position:relative;transition:transform .6s cubic-bezier(.3,.8,.3,1);will-change:transform}
+.ly-scroll::-webkit-scrollbar{display:none}
+.ly-lines{position:relative;padding:36cqh 0 56cqh}
 .ly-lines.snap{transition:none}
 .ly-scroll.plain .ly-lines{transform:none!important;padding:20cqh 0 24cqh}
 
@@ -374,3 +376,14 @@ body.scrubbing #record{cursor:grabbing}
 .bg-layer{animation:bgdrift 46s ease-in-out infinite alternate;will-change:transform}
 @keyframes bgdrift{0%{transform:scale(1.1) translate3d(0,0,0)}100%{transform:scale(1.2) translate3d(-2.5%,1.8%,0)}}
 @media (prefers-reduced-motion:reduce){.bg-layer{animation:none}}
+
+/* scrollable synced lyrics: tap a line to start from there */
+.ly-scroll:not(.plain) .ly-line:active{color:#fff}
+.ly-now{
+  position:absolute;left:50%;bottom:9cqw;transform:translate(-50%,10px);z-index:2;
+  padding:2cqw 4.5cqw;border:1px solid rgba(240,227,199,.4);border-radius:999px;
+  background:rgba(24,14,8,.82);color:var(--cream);font-size:max(11px,3.6cqw);font-weight:600;letter-spacing:.04em;
+  opacity:0;pointer-events:none;transition:opacity .3s ease,transform .3s ease;cursor:pointer;
+}
+.ly-now.show{opacity:1;pointer-events:auto;transform:translate(-50%,0)}
+@media (orientation:landscape){ .ly-now{left:35%} }
