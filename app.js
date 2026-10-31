@@ -217,6 +217,7 @@ function applyPlayer(p) {
   const t = normalize(p.item);
   S.device = p.device || null;
   S.isPlaying = !!p.is_playing;
+  if (S.isPlaying) S.expectAt = 0;
   S.progress = p.progress_ms || 0;
   S.duration = t.duration;
   S.syncedAt = performance.now();
@@ -526,6 +527,18 @@ function setLyrics(on) {
    ===================================================================== */
 async function control(kind) {
   if (S.demo) { demoControl(kind); return true; }
+  activateLocal();
+  if (LOCAL.player && LOCAL.id && S.device && S.device.id === LOCAL.id) {
+    try {
+      const P = LOCAL.player;
+      if (kind === 'play') await P.resume(); else if (kind === 'pause') await P.pause();
+      else if (kind === 'next') await P.nextTrack(); else await P.previousTrack();
+      if (kind === 'play' || kind === 'pause') { S.progress = curProgress(); S.syncedAt = performance.now(); S.isPlaying = kind === 'play'; renderPlaying(); }
+      hideNotice(); setTimeout(poll, 500);
+      if (kind === 'play') expectPlaying();
+      return true;
+    } catch { /* fall back to the Web API below */ }
+  }
   const map = {
     play: ['PUT', '/me/player/play'], pause: ['PUT', '/me/player/pause'],
     next: ['POST', '/me/player/next'], prev: ['POST', '/me/player/previous'],
@@ -539,6 +552,7 @@ async function control(kind) {
       }
       hideNotice();
       setTimeout(poll, 600);
+      if (kind === 'play') expectPlaying();
       return true;
     }
     if (r.status === 404 && LOCAL.id && kind === 'play') {         // nothing active: start playing here in the browser
@@ -721,10 +735,11 @@ function playTrack(t) {
   return playBody({ uris: PL.tracks.slice(from, from + 100).map((x) => x.uri), offset: { uri: t.uri } }, t.name);
 }
 async function playBody(body, name, deviceId, shuffle) {
+  activateLocal();
   try {
     const r = await api('PUT', '/me/player/play', { query: deviceId ? { device_id: deviceId } : undefined, body });
     if (r.ok) {
-      PL.ctx = null; $('libModal').hidden = true; $('devicesModal').hidden = true; hideNotice(); toast('Playing ' + name);
+      PL.ctx = null; $('libModal').hidden = true; $('devicesModal').hidden = true; hideNotice(); toast('Playing ' + name); expectPlaying();
       if (shuffle) api('PUT', '/me/player/shuffle', { query: { state: 'true' } }).catch(() => {});
       setTimeout(poll, 800);
     } else if (r.status === 404 && LOCAL.id && !deviceId) { return playBody(body, name, LOCAL.id, shuffle); }   // no active device: play here
@@ -908,16 +923,23 @@ function initLocalPlayer() {
   p.addListener('player_state_changed', () => { clearTimeout(LOCAL.t); LOCAL.t = setTimeout(poll, 150); });
   LOCAL.player = p;
   p.connect().then((ok) => { if (!ok && !LOCAL.err) localFail('Couldn’t start in-browser playback. Audio will play on the device you pick.'); });
-  activateLocal();
 }
 function stopLocalPlayer() {
   try { if (LOCAL.player) LOCAL.player.disconnect(); } catch { /* ignore */ }
-  LOCAL.player = null; LOCAL.id = null; LOCAL.loading = false; LOCAL.activated = false; LOCAL.err = ''; updateLocalUi();
+  LOCAL.player = null; LOCAL.id = null; LOCAL.loading = false; LOCAL.err = ''; updateLocalUi();
 }
-function activateLocal() {                                  // mobile Safari only allows audio after a tap
-  if (LOCAL.player && !LOCAL.activated && LOCAL.tapped && LOCAL.player.activateElement) {
-    LOCAL.activated = true; try { LOCAL.player.activateElement(); } catch { /* ignore */ }
-  }
+function activateLocal() {                                  // iOS Safari only allows audio if this runs inside a tap
+  try { if (LOCAL.player && LOCAL.player.activateElement) LOCAL.player.activateElement(); } catch { /* ignore */ }
+}
+function expectPlaying() {                                  // if Spotify says "ok" but nothing starts, say so instead of silently flipping back
+  const t = S.expectAt = performance.now();
+  setTimeout(() => {
+    if (S.expectAt !== t || S.isPlaying || S.demo) return;
+    S.expectAt = 0;
+    const here = LOCAL.id && S.device && S.device.id === LOCAL.id;
+    toast(here ? 'Safari didn’t start the audio. Tap the screen once, then press play again. If it keeps failing, switch off “Play audio in this browser” in the device picker and choose another device.'
+               : 'Spotify accepted play but nothing started. Check that the chosen device is awake, or pick another one.', true);
+  }, 4500);
 }
 function bindLocal() {
   const chk = $('chkLocal'); chk.checked = localWanted();
@@ -926,7 +948,7 @@ function bindLocal() {
     if (chk.checked) startLocalPlayer(); else stopLocalPlayer();
     updateLocalUi();
   };
-  document.addEventListener('pointerdown', () => { LOCAL.tapped = true; activateLocal(); }, { passive: true });
+  for (const ev of ['click', 'pointerup', 'touchend']) document.addEventListener(ev, activateLocal, { capture: true, passive: true });
   updateLocalUi();
 }
 
