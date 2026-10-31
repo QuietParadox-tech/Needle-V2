@@ -216,7 +216,7 @@ function applyPlayer(p) {
   if (!p.item) return setIdle();
   const t = normalize(p.item);
   S.device = p.device || null;
-  S.isPlaying = !!p.is_playing;
+  S.isPlaying = MUTE.on ? true : !!p.is_playing;   // don't flicker to "paused" while the song is hushed for scrubbing
   if (S.isPlaying) S.expectAt = 0;
   S.progress = p.progress_ms || 0;
   S.duration = t.duration;
@@ -1033,6 +1033,25 @@ function setSfx(on) {
   toast(on ? 'Vinyl sounds on' : 'Vinyl sounds off');
 }
 
+/* While the record is being turned by hand the song itself is silenced (paused), so only the
+   vinyl sounds are heard. It resumes from the new position when you let go. iOS ignores volume
+   changes from web pages, so this pauses instead of lowering the volume. */
+const MUTE = { on: false, local: false, p: null };
+function musicHush() {
+  if (S.demo || !S.isPlaying || MUTE.on) return;
+  MUTE.on = true;
+  MUTE.local = !!(LOCAL.player && LOCAL.id && S.device && S.device.id === LOCAL.id);
+  MUTE.p = (async () => { try { if (MUTE.local) await LOCAL.player.pause(); else await api('PUT', '/me/player/pause'); } catch { /* resume step reports problems */ } })();
+}
+async function musicUnhush() {
+  if (!MUTE.on) return;
+  try {
+    await MUTE.p;
+    if (MUTE.local) await LOCAL.player.resume();
+    else { const r = await api('PUT', '/me/player/play'); if (!r.ok) toast(explain(r), true); }
+  } catch { toast('Couldn’t resume the music. Press play.', true); }
+  finally { MUTE.on = false; setTimeout(poll, 400); }
+}
 function stageGeom() {
   const st = $('stage'), r = st.getBoundingClientRect(), cs = getComputedStyle(st);
   const v = (n) => parseFloat(cs.getPropertyValue(n)), u = r.width / (v('--sw') || 4);
@@ -1086,7 +1105,7 @@ function bindTurntable() {
     if (!sc || e.pointerId !== sc.id) return;
     if (!sc.moved) {
       if (Math.hypot(e.clientX - sc.x, e.clientY - sc.y) < 6) return;
-      sc.moved = true; document.body.classList.add('scrubbing'); sfxStart();
+      sc.moved = true; document.body.classList.add('scrubbing'); sfxStart(); musicHush();
     }
     const a = ang(e, sc.g); let d = a - sc.last; sc.last = a;
     if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI;
@@ -1104,10 +1123,11 @@ function bindTurntable() {
     document.body.classList.remove('scrubbing'); sfxStop();
     if (!s.moved) return;
     await seek(Math.round(S.scrub));                       // keeps showing the new time until Spotify answers
-    S.scrub = null; tick(true); lyTick(true);
+    await musicUnhush();                                   // song comes back from the new spot
+    S.syncedAt = performance.now(); S.scrub = null; tick(true); lyTick(true);
   };
   rec.addEventListener('pointerup', recEnd);
-  rec.addEventListener('pointercancel', (e) => { if (sc && e.pointerId === sc.id) { sc = null; S.scrub = null; document.body.classList.remove('scrubbing'); sfxStop(); tick(true); } });
+  rec.addEventListener('pointercancel', (e) => { if (sc && e.pointerId === sc.id) { sc = null; S.scrub = null; document.body.classList.remove('scrubbing'); sfxStop(); tick(true); musicUnhush(); } });
 }
 
 function bind() {
