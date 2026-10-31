@@ -12,7 +12,7 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="style.css?v=shared-1">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 
@@ -31,6 +31,11 @@
     </div>
     <img class="art" id="artA" alt="" decoding="async">
     <img class="art" id="artB" alt="" decoding="async">
+    <div class="ly-layer" id="lyrics" aria-label="Lyrics">
+      <div class="ly-scroll" id="lyScroll"><div class="ly-lines" id="lyLines"></div></div>
+      <div class="ly-status" id="lyStatus"></div>
+      <div class="ly-credit" id="lyCredit"></div>
+    </div>
     <div class="sleeve-gloss"></div>
   </div>
 
@@ -77,8 +82,8 @@
     <span id="deviceCap" class="cap"></span>
   </div>
   <div class="tools">
-    <button class="icon sm" id="btnLibrary" title="Your playlists" aria-label="Your playlists"><svg viewBox="0 0 24 24"><path d="M4 6h12M4 11h12M4 16h7M19 14v6M16 17h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
-    <button class="icon sm" id="btnDevices" title="Choose playback device" aria-label="Choose playback device"><svg viewBox="0 0 24 24"><path d="M4 6h16v10H4zM2 18h20v2H2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></button>
+    <button class="icon sm" id="btnLyrics" title="Lyrics (L)" aria-label="Show lyrics" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 10h10M4 15h16M4 20h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    <button class="icon sm" id="btnDevices"title="Choose playback device" aria-label="Choose playback device"><svg viewBox="0 0 24 24"><path d="M4 6h16v10H4zM2 18h20v2H2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></button>
     <button class="icon sm" id="btnAmbient" title="Ambient mode (A)" aria-label="Ambient mode"><svg viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg></button>
     <button class="icon sm" id="btnFull" title="Fullscreen (F)" aria-label="Fullscreen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
     <button class="icon sm" id="btnLogout" title="Disconnect Spotify" aria-label="Disconnect Spotify"><svg viewBox="0 0 24 24"><path d="M10 4H5v16h5M15 8l4 4-4 4M19 12H9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -114,28 +119,15 @@
     <p id="gateError" class="err" hidden></p>
 
     <div id="setupBox" hidden>
-      <label for="cidInput">Spotify Client ID</label>
-      <input id="cidInput" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="32-character Client ID from the Spotify Dashboard">
-      <label>Redirect URI to add in the Dashboard</label>
+      <p class="fine">NEEDLE is not configured yet. The site owner must add the shared Spotify Client ID to <code>config.js</code>. You do not need to create your own Spotify Developer app.</p>
+      <label>Redirect URI the owner must add in Spotify Dashboard</label>
       <div class="uri"><code id="redirectUri"></code><button class="mini" id="btnCopy" type="button">Copy</button></div>
       <p id="envWarn" class="warn" hidden></p>
     </div>
 
     <button class="cta" id="btnConnect">Connect Spotify</button>
     <button class="linkish" id="btnDemo">Preview with demo tracks</button>
-    <p class="fine">Connect with your own Spotify account. Free accounts can display music playing in Spotify; Premium is required for playback controls from NEEDLE. Audio plays through Spotify.</p>
-  </div>
-</section>
-
-<section id="library" class="sheet" hidden>
-  <div class="sheet-card" role="dialog" aria-label="Your playlists">
-    <header class="sheet-head">
-      <button class="icon sm" id="libBack" hidden aria-label="Back to playlists"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-      <h2 id="libTitle">Your playlists</h2>
-      <input id="libSearch" type="search" placeholder="Search playlists" autocomplete="off" autocapitalize="off" spellcheck="false">
-      <button class="icon sm" id="libClose" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
-    </header>
-    <div id="libBody"></div>
+    <p class="fine">Needs Spotify Premium for playback control. NEEDLE only asks to read and control your playback.</p>
   </div>
 </section>
 
@@ -150,7 +142,7 @@
 
 <div id="toast" role="status"></div>
 
-<script src="config.js?v=shared-1"></script>
-<script src="app.js?v=shared-1"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

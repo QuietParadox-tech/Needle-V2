@@ -1,54 +1,70 @@
-# NEEDLE — shared Spotify vinyl player
+# NEEDLE — a Spotify vinyl player
 
-NEEDLE is one static website shared by all approved users. The owner configures **one Spotify Client ID** in `config.js`; each visitor connects using their own Spotify account. Visitors do not create a developer app or enter a Client ID.
+A full-screen record-player view of whatever Spotify is playing: album sleeve on the left, spinning vinyl in the middle, tonearm on the right, background tinted from the cover art. Plain HTML/CSS/JS, no build step, no backend.
 
-## Shared app configuration
+NEEDLE **displays and remote-controls** Spotify. The audio plays on whichever device you pick in Spotify (phone, laptop, speaker). It does not stream audio itself.
 
-`config.js` already contains the NEEDLE owner's Spotify Client ID. A Client ID is public and is safe to include in this static site. **Never add a Spotify Client Secret.**
+## What Spotify currently allows (checked Oct 2026)
 
-If the owner ever replaces the Spotify app, update `CLIENT_ID` in `config.js` and add the exact deployed URL below to that app's Redirect URIs.
+- **Auth:** Authorization Code + PKCE only. The implicit grant and `localhost` / plain-HTTP redirect URIs were removed on 27 Nov 2025. NEEDLE uses PKCE, so there is **no client secret** anywhere.
+- **Development Mode (Feb/Mar 2026 rules):** the app *owner* must have Premium; one Client ID per developer; max **5 authorized users** per app; some endpoints were removed. The player endpoints NEEDLE uses (`/me/player`, `/play`, `/pause`, `/next`, `/previous`, `/seek`, `/devices`) were not on the removal list I found, but I could not test against a live account, so verify on first run.
+- **Playback control needs Premium** (you have it). Spotify can also refuse commands during ads or on some devices; NEEDLE shows the error and never fakes success.
+- **Scopes requested:** `user-read-playback-state`, `user-modify-playback-state`. Nothing else.
 
-## Deploy to this GitHub Pages repository
+## 1. Create the Spotify app (once)
 
-Repository: `QuietParadox-tech/Needle-V2`
+1. Go to <https://developer.spotify.com/dashboard> (signed in to your Premium account) → **Create app**.
+2. Name: `NEEDLE`. API/SDK: tick **Web API**.
+3. **Redirect URI:** the exact address where NEEDLE will be hosted, including the trailing slash:
+   - GitHub Pages: `https://YOURNAME.github.io/needle/`
+   - Local testing: `http://127.0.0.1:8080/` (must be `127.0.0.1`, not `localhost`)
+   
+   NEEDLE's first-run screen shows the exact URI it will send; copy that.
+4. Save, open **Settings**, copy the **Client ID** (not the secret).
+5. Under **User Management**, make sure your own Spotify account email is listed.
 
-1. Upload and replace the files in this folder at the repository root (same level as `README.md`).
-2. Commit the changes to the `main` branch.
-3. In GitHub, open **Settings → Pages** and confirm Pages deploys from `main` / root.
-4. Wait for the Pages deployment to finish.
-5. Open: `https://quietparadox-tech.github.io/Needle-V2/`
+## 2. Configure the shared Client ID (owner only)
 
-## Spotify Dashboard setup (owner does this once)
+Paste the app owner's Client ID into `config.js` (`CLIENT_ID: "..."`) and redeploy. Every visitor uses this same app Client ID and signs in with their own Spotify account. Friends do **not** create developer apps or enter Client IDs. Add each permitted tester's Spotify account to the app's User Management list. A Client ID is public by design; never publish a Client Secret. The first-run screen now only shows the redirect URI and explains when the owner has not configured the app.
 
-In the owner's Spotify Developer Dashboard, for the NEEDLE app:
+## 3. Deploy to GitHub Pages
 
-- Add this exact Redirect URI: `https://quietparadox-tech.github.io/Needle-V2/`
-- Save the settings.
-- Under **User Management**, add the Spotify account email for every person who will test the app.
-- Development Mode has a maximum of five authorized users, including the app owner, under the applicable Spotify rules. This is not an unrestricted public app; people not on the allow-list cannot connect.
-- The developer/app owner must meet Spotify's current Development Mode eligibility requirements.
+1. Create a GitHub repo named `needle`, upload all files in this folder to the root.
+2. Repo → **Settings → Pages** → Source: *Deploy from a branch* → `main` / `/ (root)`.
+3. Wait a minute, open `https://YOURNAME.github.io/needle/`.
+4. Make sure that exact URL (with trailing slash) is in the Dashboard's Redirect URIs.
 
-## What each visitor can do
+Local test instead: `python3 -m http.server 8080 --bind 127.0.0.1`, then open `http://127.0.0.1:8080/`.
 
-- Each person signs in with their own Spotify account. Their OAuth tokens are stored in that browser's local storage, not shared with other visitors.
-- NEEDLE reads the current playback state and displays the current track, artwork, progress and vinyl animation.
-- A Spotify Free listener can play music in Spotify and have NEEDLE display it. Spotify may restrict playback-control API actions for Free accounts; they can use Spotify itself for play, pause, previous and next.
-- Premium is required for Spotify playback control through NEEDLE and for the Spotify Web Playback SDK. Device availability and Spotify's API restrictions also apply.
-- Each person should use their own device/browser profile. On a shared device, use **Disconnect Spotify** before another person signs in.
+## 4. Use it on iPad
+
+1. Open the URL in Safari → **Connect Spotify** → approve.
+2. Start music in the Spotify app (or tap the device icon in NEEDLE to choose where it plays).
+3. Share → **Add to Home Screen** for a chrome-free full-screen launch.
+4. Eye icon = ambient mode (hides controls; tap the scene to peek). Screen stays awake while playing where iPadOS allows it.
 
 ## Features
 
-- Full-screen responsive turntable, sleeve artwork, animated vinyl and tonearm.
-- Dynamic background colours derived from album artwork when image CORS permits.
-- Current track and playback progress synchronisation.
-- Playlist browsing and track selection, subject to Spotify's current API restrictions.
-- Playback device picker, ambient mode, fullscreen and demo mode.
-- Authorization Code with PKCE; no client secret or backend.
+- Vinyl spins while playing, stops on pause; tonearm lifts and drops on track change and slowly tracks across the record.
+- Sleeve, label and background update with each track; colours are sampled from the real cover art.
+- Lyrics: the lines icon (or **L**) blurs the album sleeve and shows time-synced lyrics on it while the record keeps spinning. The current line is highlighted and scrolls with the song; tap any line to jump there. Your choice is remembered. Tracks with only unsynced lyrics show as a scrollable page; instrumentals and tracks with no match say so.
+- Controls: play/pause, previous, next, click-to-seek, device picker. Keyboard: Space, ← →, L (lyrics), A (ambient), F (fullscreen).
+- Polls Spotify every 3 s (6 s paused) and interpolates progress locally; pauses polling when the tab is hidden.
+- Demo mode (`?demo`, or the link on the first screen) uses made-up tracks and is labelled as such.
+
+## Lyrics source and privacy
+
+Lyrics come from [LRCLIB](https://lrclib.net), a free community database that needs no API key (Spotify's own lyrics are not available through its public API). When lyrics are switched on, NEEDLE sends the current track's title, artist, album and length to lrclib.net, directly from the browser. Nothing is sent while lyrics are off. Results are cached per track for the session. Coverage depends on the community database, so obscure tracks may have none, and timing can occasionally be a little off for a different edit of a song. `?demo` mode uses invented lyrics.
+
+## Known limits
+
+- Only one device plays at a time; if nothing is active Spotify returns "no device" and NEEDLE tells you to open Spotify or pick a device.
+- Tokens live in this browser's `localStorage` (normal for a static PKCE app). "Disconnect" clears them.
+- If your Premium lapses, Development Mode apps stop working.
+- Cover-art colour sampling needs Spotify's image CDN to allow CORS; if a cover can't be sampled the background falls back to the default bronze palette.
+- Lyrics were tested against a mocked LRCLIB response, not the live service.
+- Not tested against a real Spotify account or on a physical iPad (see delivery notes).
 
 ## Files
 
 `index.html` · `style.css` · `app.js` · `config.js` · `manifest.webmanifest` · `icon.svg` · `apple-touch-icon.png`
-
-## Important limitations
-
-Spotify controls which endpoints and playlist data are available to Development Mode apps and can change those rules. The app displays API errors rather than pretending a blocked action succeeded. The Spotify Web Playback SDK is best-effort on iPad Safari; Spotify officially targets desktop browsers for that SDK. For reliable iPad playback, start audio in the Spotify app and let NEEDLE mirror it.

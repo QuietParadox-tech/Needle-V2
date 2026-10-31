@@ -4,15 +4,14 @@
 /* =====================================================================
    NEEDLE — Spotify vinyl player
    Auth: Authorization Code + PKCE (no client secret, no backend).
-   Scopes: playback state/control, playlist read, streaming (in-browser player).
+   Scopes: user-read-playback-state, user-modify-playback-state.
    ===================================================================== */
 
 const CFG = Object.assign({ CLIENT_ID: '', POLL_PLAYING_MS: 3000, POLL_PAUSED_MS: 6000 }, window.NEEDLE_CONFIG || {});
-const NEED = ['user-read-playback-state', 'user-modify-playback-state', 'playlist-read-private', 'playlist-read-collaborative', 'streaming', 'user-read-email', 'user-read-private'];
-const SCOPES = NEED.join(' ');
+const SCOPES = 'user-read-playback-state user-modify-playback-state';
 const API = 'https://api.spotify.com/v1';
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
-const K = { tokens: 'needle.tokens', verifier: 'needle.verifier', state: 'needle.state', cid: 'needle.clientId', ambient: 'needle.ambient' };
+const K = { tokens: 'needle.tokens', verifier: 'needle.verifier', state: 'needle.state', cid: 'needle.clientId', ambient: 'needle.ambient', lyrics: 'needle.lyrics' };
 
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -37,13 +36,15 @@ const S = {
   seq: 0,               // track-change sequence (cancels stale transitions)
   bgOn: 'B',
   artOn: 'B',
+  track: null,          // track currently shown on the label
+  lyricsOn: false,
 };
 let pollTimer = null;
 let polling = false;
 let wakeLock = null;
 
 /* ---------- config helpers ---------- */
-function clientId() { return (CFG.CLIENT_ID || store.get(K.cid) || '').trim(); }
+function clientId() { return (CFG.CLIENT_ID || '').trim(); }
 function redirectUri() { return location.origin + location.pathname.replace(/index\.html$/, ''); }
 
 /* ---------- PKCE ---------- */
@@ -96,18 +97,11 @@ async function errText(res) {
 /* ---------- tokens ---------- */
 function tokens() { try { return JSON.parse(store.get(K.tokens) || 'null'); } catch { return null; } }
 function saveTokens(j, oldRefresh) {
-  const prev = tokens();
   store.set(K.tokens, JSON.stringify({
     access_token: j.access_token,
     refresh_token: j.refresh_token || oldRefresh,
     expires_at: Date.now() + (j.expires_in || 3600) * 1000,
-    scope: j.scope || (prev && prev.scope) || '',
   }));
-}
-function hasScopes() {
-  const t = tokens(); if (!t) return false;
-  const have = (t.scope || '').split(/\s+/);
-  return NEED.every((x) => have.includes(x));
 }
 let refreshing = null;
 function refreshTokens() {
@@ -208,6 +202,8 @@ function normalize(it) {
     artists: ep ? ((it.show && it.show.name) || '') : (it.artists || []).map((a) => a.name).join(', '),
     album: ep ? ((it.show && it.show.publisher) || '') : ((it.album && it.album.name) || ''),
     art, duration: it.duration_ms || 0,
+    artist1: ep ? '' : ((it.artists && it.artists[0] && it.artists[0].name) || ''),
+    episode: ep,
   };
 }
 function applyPlayer(p) {
@@ -224,8 +220,7 @@ function applyPlayer(p) {
 function setIdle() {
   S.isPlaying = false; S.syncedAt = performance.now();
   renderPlaying();
-  showNotice('Nothing is playing. Pick something from your library to start a record.', [
-    { label: 'Open library', fn: openLibrary },
+  showNotice('Nothing is playing. Open Spotify on a device and press play, or pick a device to play on.', [
     { label: 'Choose device', fn: openDevices },
   ]);
   if (!S.trackId) { setLabel({ title: 'NEEDLE', artists: 'Nothing playing', album: '' }); setBackground(null); }
@@ -291,50 +286,48 @@ function setSleeve(url, cors) {
   next.src = url; next.classList.add('show'); prev.classList.remove('show');
   S.artOn = S.artOn === 'A' ? 'B' : 'A';
 }
-const DEFAULT_PAL = { cols: [[190, 150, 108], [132, 84, 48], [84, 52, 32], [150, 92, 46]], D: [42, 27, 18] };
+const DEFAULT_PAL = { L: [176, 158, 134], M: [104, 68, 42], A: [150, 92, 46], D: [42, 27, 18], B: [168, 146, 118] };
+const BEIGE = [214, 196, 168], BRONZE = [142, 90, 50], AMBER = [168, 104, 48], UMBER = [40, 26, 18];
 const lum = (c) => 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
 const mix = (a, b, t) => a.map((v, i) => v * (1 - t) + b[i] * t);
-const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
-function tone(c) {                       // keep the cover's hue, but keep UI text legible
-  const m = (c[0] + c[1] + c[2]) / 3;
-  c = c.map((v) => Math.max(0, Math.min(255, m + (v - m) * 1.12)));   // slight saturation lift
+const avg = (px) => px.reduce((s, p) => [s[0] + p[0], s[1] + p[1], s[2] + p[2]], [0, 0, 0]).map((v) => v / Math.max(1, px.length));
+function clampLum(c, lo, hi) {
   const l = lum(c) || 1;
-  if (l < 34) return c.map((v) => Math.min(255, v * 34 / l));
-  if (l > 196) return c.map((v) => v * 196 / l);
+  if (l < lo) return c.map((v) => Math.min(255, v * lo / l));
+  if (l > hi) return c.map((v) => v * hi / l);
   return c;
 }
 function paletteFrom(img) {
   try {
-    const N = 32, cv = document.createElement('canvas'); cv.width = cv.height = N;
+    const N = 28, cv = document.createElement('canvas'); cv.width = cv.height = N;
     const cx = cv.getContext('2d', { willReadFrequently: true });
     cx.drawImage(img, 0, 0, N, N);
-    const d = cx.getImageData(0, 0, N, N).data, bk = new Map();
-    for (let i = 0; i < d.length; i += 4) {
-      if (d[i + 3] < 200) continue;
-      const k = (d[i] >> 5) << 6 | (d[i + 1] >> 5) << 3 | (d[i + 2] >> 5);
-      const e = bk.get(k) || { n: 0, r: 0, g: 0, b: 0 };
-      e.n++; e.r += d[i]; e.g += d[i + 1]; e.b += d[i + 2]; bk.set(k, e);
+    const d = cx.getImageData(0, 0, N, N).data, px = [];
+    for (let i = 0; i < d.length; i += 4) px.push([d[i], d[i + 1], d[i + 2]]);
+    px.sort((a, b) => lum(a) - lum(b));
+    const q = Math.floor(px.length / 4);
+    const dark = avg(px.slice(0, q)), light = avg(px.slice(-q));
+    let w = 0, sum = [0, 0, 0];
+    for (const p of px) {
+      const mx = Math.max(...p), mn = Math.min(...p), s = mx ? (mx - mn) / mx : 0, wt = 0.05 + s * s * (mx / 255);
+      sum = [sum[0] + p[0] * wt, sum[1] + p[1] * wt, sum[2] + p[2] * wt]; w += wt;
     }
-    const ents = [...bk.values()].map((e) => {
-      const c = [e.r / e.n, e.g / e.n, e.b / e.n], mx = Math.max(...c), mn = Math.min(...c);
-      return { c, w: e.n * (0.35 + (mx ? (mx - mn) / mx : 0)) };
-    }).sort((a, b) => b.w - a.w);
-    const picked = [];
-    for (const e of ents) { if (picked.every((p) => dist(p, e.c) > 60)) picked.push(e.c); if (picked.length === 4) break; }
-    if (!picked.length) return DEFAULT_PAL;
-    const base = picked[0];
-    while (picked.length < 4) picked.push(picked.length % 2 ? mix(base, [0, 0, 0], 0.5) : mix(base, [255, 255, 255], 0.28));
-    const cols = picked.map(tone).sort((a, b) => lum(b) - lum(a));
-    return { cols, D: mix(cols[cols.length - 1], [0, 0, 0], 0.35) };
+    const dom = sum.map((v) => v / w);
+    return {
+      L: mix(light, BEIGE, 0.6),
+      M: clampLum(mix(dom, BRONZE, 0.45), 55, 120),
+      A: clampLum(mix(dom, AMBER, 0.55), 70, 150),
+      D: mix(dark, UMBER, 0.65),
+      B: mix(light, [190, 165, 130], 0.5),
+    };
   } catch { return DEFAULT_PAL; }
 }
 function bgCss(p) {
   const c = (a, al = 1) => 'rgba(' + a.map(Math.round).join(',') + ',' + al + ')';
-  const [c0, c1, c2, c3] = p.cols;
-  return 'radial-gradient(65% 60% at 10% 6%,' + c(c0, .9) + ',transparent 72%),' +
-    'radial-gradient(60% 60% at 94% 96%,' + c(c1, .85) + ',transparent 72%),' +
-    'radial-gradient(45% 45% at 88% 8%,' + c(c3, .55) + ',transparent 75%),' +
-    'linear-gradient(115deg,' + c(c0) + ' 0%,' + c(c1) + ' 38%,' + c(c2) + ' 72%,' + c(c3) + ' 100%)';
+  return 'radial-gradient(60% 55% at 80% 6%,' + c(p.A, .95) + ',transparent 72%),' +
+    'radial-gradient(55% 50% at 98% 100%,' + c(p.B, .9) + ',transparent 70%),' +
+    'radial-gradient(45% 45% at 0% 0%,' + c(p.L, .85) + ',transparent 75%),' +
+    'linear-gradient(100deg,' + c(p.L) + ' 0%,' + c(p.M) + ' 38%,' + c(p.D) + ' 72%,' + c(p.M) + ' 100%)';
 }
 function setBackground(p) {
   p = p || DEFAULT_PAL;
@@ -355,6 +348,7 @@ async function changeTrack(t) {
   const stage = $('stage');
   if (!first) { stage.classList.add('changing'); S.lifted = true; renderArm(); await sleep(550); if (my !== S.seq) return; }
   setLabel(t);
+  lyOnTrack(t);
   setSleeve(loaded ? t.art : null, loaded ? loaded.cors : false);
   setBackground(loaded && loaded.cors ? paletteFrom(loaded.img) : null);
   if (!first) {
@@ -362,6 +356,160 @@ async function changeTrack(t) {
     await sleep(900); if (my !== S.seq) return;
   }
   S.lifted = false; renderArm();
+}
+
+/* =====================================================================
+   Lyrics — synced lines from LRCLIB (https://lrclib.net, free, no key).
+   Only requested while lyrics are switched on. Shown on the sleeve.
+   ===================================================================== */
+const LRC_API = 'https://lrclib.net/api';
+const LY_LEAD = 250;                       // highlight a line slightly early, feels better than late
+const LY = { id: null, lines: null, els: [], idx: -2 };
+const lyCache = new Map();
+let lySeq = 0;
+
+function parseLrc(txt) {
+  const out = [], TS = /\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
+  for (const raw of String(txt || '').split(/\r?\n/)) {
+    const stamps = [...raw.matchAll(TS)];
+    if (!stamps.length) continue;           // metadata tags like [ar:...] have no timestamp
+    const text = raw.replace(TS, '').replace(/<\d{1,3}:\d{2}(?:[.:]\d{1,3})?>/g, '').trim();
+    for (const m of stamps) {
+      const f = m[3] ? Number(m[3].padEnd(3, '0').slice(0, 3)) : 0;
+      out.push({ t: Number(m[1]) * 60000 + Number(m[2]) * 1000 + f, text });
+    }
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
+function cleanTitle(s) {
+  const c = String(s || '')
+    .replace(/\s*[(\[][^)\]]*(feat|ft\.|with |remaster|live|version|edit|mono|stereo)[^)\]]*[)\]]/ig, '')
+    .replace(/\s+-\s+.*(remaster|version|edit|mono|stereo|live|single).*$/i, '').trim();
+  return c || s;
+}
+async function lrc(path, params) {
+  const url = new URL(LRC_API + path);
+  for (const [k, v] of Object.entries(params)) if (v) url.searchParams.set(k, v);
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout ? AbortSignal.timeout(9000) : undefined });
+  if (res.status === 404 || res.status === 400) return null;
+  if (!res.ok) throw new Error('lrclib ' + res.status);
+  return res.json();
+}
+function pickBest(list, secs) {
+  if (!Array.isArray(list)) return null;
+  const ok = list.filter((r) => r && (r.instrumental || r.syncedLyrics || r.plainLyrics) && (!secs || !r.duration || Math.abs(r.duration - secs) <= 6));
+  ok.sort((a, b) => ((a.syncedLyrics ? 0 : 1) - (b.syncedLyrics ? 0 : 1)) || (Math.abs((a.duration || 0) - secs) - Math.abs((b.duration || 0) - secs)));
+  return ok[0] || null;
+}
+function lyResult(rec) {
+  if (!rec) return { none: true };
+  if (rec.instrumental) return { instrumental: true };
+  const synced = rec.syncedLyrics ? parseLrc(rec.syncedLyrics) : [];
+  if (synced.length) return { synced };
+  if (rec.plainLyrics && rec.plainLyrics.trim()) return { plain: rec.plainLyrics };
+  return { none: true };
+}
+async function fetchLyrics(t) {
+  if (t.lrc) return { synced: t.lrc, demo: true };
+  if (t.episode) return { none: true, podcast: true };
+  const secs = Math.round(t.duration / 1000);
+  let rec = await lrc('/get', { track_name: t.title, artist_name: t.artist1, album_name: t.album, duration: secs });
+  if (!rec) {
+    const ct = cleanTitle(t.title);
+    let list = await lrc('/search', { track_name: ct, artist_name: t.artist1 });
+    if (!Array.isArray(list) || !list.length) list = await lrc('/search', { q: (ct + ' ' + t.artist1).trim() });
+    rec = pickBest(list, secs);
+  }
+  return lyResult(rec);
+}
+
+function lyStatus(msg, loading) {
+  const el = $('lyStatus'); el.textContent = msg || '';
+  el.classList.toggle('show', !!msg); el.classList.toggle('loading', !!loading);
+}
+function lyClear() {
+  LY.lines = null; LY.els = []; LY.idx = -2;
+  $('lyLines').textContent = ''; $('lyLines').style.transform = '';
+  $('lyScroll').classList.remove('plain'); $('lyScroll').scrollTop = 0;
+  $('lyCredit').textContent = ''; lyStatus('');
+}
+function lyShow(res) {
+  lyClear();
+  if (res.instrumental) return lyStatus('Instrumental ♪');
+  if (res.none) return lyStatus(res.podcast ? 'No lyrics for podcasts' : 'No lyrics found for this track');
+  const box = $('lyLines'), frag = document.createDocumentFragment();
+  if (res.synced) {
+    res.synced.forEach((ln, i) => {
+      const d = document.createElement('div');
+      d.className = 'ly-line' + (ln.text ? '' : ' gap'); d.textContent = ln.text || '♪'; d.dataset.i = i;
+      frag.appendChild(d);
+    });
+    box.appendChild(frag);
+    LY.lines = res.synced; LY.els = Array.from(box.children);
+    lyTick(true); lyCenter(true);
+  } else {
+    $('lyScroll').classList.add('plain');
+    let blank = false;
+    for (const raw of res.plain.split(/\r?\n/)) {
+      const text = raw.trim();
+      if (!text) { if (blank) continue; blank = true; } else blank = false;
+      const d = document.createElement('div'); d.className = 'ly-line' + (text ? '' : ' blank'); d.textContent = text;
+      frag.appendChild(d);
+    }
+    box.appendChild(frag);
+  }
+  $('lyCredit').textContent = res.demo ? 'Demo lyrics · invented' : (res.synced ? 'LRCLIB' : 'LRCLIB · not synced');
+}
+async function lyLoad(t) {
+  const my = ++lySeq;
+  LY.id = t.id; lyClear();
+  const cached = lyCache.get(t.id);
+  if (cached) return lyShow(cached);
+  lyStatus('Finding lyrics…', true);
+  try {
+    const res = await fetchLyrics(t);
+    if (my !== lySeq) return;
+    lyCache.set(t.id, res); lyShow(res);
+  } catch {
+    if (my !== lySeq) return;
+    LY.id = null;                              // allow a retry by toggling lyrics
+    lyStatus('Couldn’t load lyrics. Toggle lyrics off and on to retry.');
+  }
+}
+function lyOnTrack(t) {                        // called when a new record's label is swapped in
+  S.track = t; LY.id = null; lySeq++; lyClear();
+  if (S.lyricsOn) lyLoad(t);
+}
+function lyIndex(pos) {                        // last line whose time <= pos
+  const a = LY.lines; let lo = 0, hi = a.length - 1, r = -1;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (a[m].t <= pos) { r = m; lo = m + 1; } else hi = m - 1; }
+  return r;
+}
+function lyTick(force) {
+  if (!S.lyricsOn || !LY.lines) return;
+  const i = lyIndex(curProgress() + LY_LEAD);
+  if (i === LY.idx && !force) return;
+  const first = LY.idx === -2; LY.idx = i;
+  LY.els.forEach((el, k) => { el.classList.toggle('cur', k === i); el.classList.toggle('past', k < i); });
+  lyCenter(first);
+}
+function lyCenter(snap) {
+  if (!LY.els.length) return;
+  const el = LY.els[Math.max(0, LY.idx)], box = $('lyLines');
+  const y = $('lyScroll').clientHeight * 0.4 - (el.offsetTop + el.offsetHeight / 2);
+  if (snap) box.classList.add('snap');
+  box.style.transform = 'translateY(' + y.toFixed(1) + 'px)';
+  if (snap) { void box.offsetWidth; box.classList.remove('snap'); }
+}
+function setLyrics(on) {
+  S.lyricsOn = on;
+  document.body.classList.toggle('lyrics', on);
+  const b = $('btnLyrics'); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on));
+  store.set(K.lyrics, on ? '1' : '0');
+  if (!on) return;
+  if (!S.track) lyStatus('Play a track to see its lyrics');
+  else if (LY.id !== S.track.id) lyLoad(S.track);
+  else { lyTick(true); lyCenter(true); }
 }
 
 /* =====================================================================
@@ -374,7 +522,6 @@ async function control(kind) {
     next: ['POST', '/me/player/next'], prev: ['POST', '/me/player/previous'],
   };
   const [m, path] = map[kind];
-  if (kind === 'play' && !(S.device && S.device.is_active)) return resumeSomewhere();
   try {
     const r = await api(m, path);
     if (r.ok) {
@@ -498,10 +645,14 @@ function demoArt(h1, h2, v) {
   const svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 600'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='hsl(" + h1 + " 60% 52%)'/><stop offset='1' stop-color='hsl(" + h2 + " 55% 24%)'/></linearGradient></defs><rect width='600' height='600' fill='url(#g)'/>" + shapes + '</svg>';
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 }
+const demoLrc = (lines) => lines.map((text, i) => ({ t: i * 4000, text }));
 const DEMO = [
-  { id: 'd1', title: 'Golden Hour Static', artists: 'The Velvet Meridian', album: 'Amber Rooms', art: demoArt(28, 12, 0), duration: 34000 },
-  { id: 'd2', title: 'Slow Tide Letters', artists: 'Marlowe & Pine, Ines Calder', album: 'Paper Lanterns', art: demoArt(205, 250, 1), duration: 34000 },
-  { id: 'd3', title: 'Needle Drop', artists: 'Odd Season Choir', album: 'Low Light Sessions', art: demoArt(340, 20, 2), duration: 34000 },
+  { id: 'd1', title: 'Golden Hour Static', artists: 'The Velvet Meridian', album: 'Amber Rooms', art: demoArt(28, 12, 0), duration: 34000,
+    lrc: demoLrc(['', 'Light comes through the amber glass', 'Dust is dancing, let it pass', 'Every groove a little tide', 'Carrying me to your side', '', 'Spin it slow, spin it low', 'Let the golden static glow', 'Spin it slow, spin it low']) },
+  { id: 'd2', title: 'Slow Tide Letters', artists: 'Marlowe & Pine, Ines Calder', album: 'Paper Lanterns', art: demoArt(205, 250, 1), duration: 34000,
+    lrc: demoLrc(['', 'Paper boats on a slow tide', 'Letters folded, side by side', 'Nobody reads them till they land', 'Salt and ink on every hand', '', 'Carry them home, carry them far', 'Underneath a single star', 'Carry them home']) },
+  { id: 'd3', title: 'Needle Drop', artists: 'Odd Season Choir', album: 'Low Light Sessions', art: demoArt(340, 20, 2), duration: 34000,
+    lrc: demoLrc(['', 'Lower the needle, hold your breath', 'Crackle first, then a quiet depth', 'Voices rise from the black', 'Nothing here is turning back', '', 'Needle drop, needle drop', 'Hear the whole room stop', 'Needle drop']) },
 ];
 let demoIdx = 0;
 function startDemo() {
@@ -523,240 +674,10 @@ function demoControl(kind) {
 }
 
 /* =====================================================================
-   In-browser player (Spotify Web Playback SDK)
-   Lets NEEDLE itself be a Spotify device so nothing else has to be open.
-   Best effort: Spotify only officially supports desktop browsers.
-   ===================================================================== */
-const sdk = { player: null, deviceId: null, state: 'off', err: '' };
-function initSdk() {
-  if (sdk.player || sdk.state === 'loading' || S.demo || !tokens()) return;
-  if (!navigator.requestMediaKeySystemAccess) { sdk.state = 'unsupported'; return; }
-  sdk.state = 'loading';
-  window.onSpotifyWebPlaybackSDKReady = createSdkPlayer;
-  if (window.Spotify) return createSdkPlayer();
-  const s = document.createElement('script');
-  s.src = 'https://sdk.scdn.co/spotify-player.js'; s.async = true;
-  s.onerror = () => { sdk.state = 'error'; sdk.err = 'Could not load Spotify’s player script.'; };
-  document.head.appendChild(s);
-}
-function createSdkPlayer() {
-  try {
-    const p = new window.Spotify.Player({
-      name: 'NEEDLE', volume: 0.8,
-      getOAuthToken: (cb) => { getToken().then(cb).catch(() => {}); },
-    });
-    p.addListener('ready', ({ device_id }) => { sdk.deviceId = device_id; sdk.state = 'ready'; });
-    p.addListener('not_ready', () => { sdk.deviceId = null; sdk.state = 'offline'; });
-    ['initialization_error', 'authentication_error', 'account_error', 'playback_error'].forEach((ev) =>
-      p.addListener(ev, ({ message }) => {
-        sdk.err = message;
-        if (ev === 'playback_error') toast('Browser player: ' + message, true);
-        else { sdk.state = 'error'; sdk.deviceId = null; }
-      }));
-    sdk.player = p; p.connect();
-  } catch (e) { sdk.state = 'error'; sdk.err = String((e && e.message) || e); }
-}
-function wakeSdk() { try { if (sdk.player && sdk.player.activateElement) sdk.player.activateElement(); } catch { /* ignore */ } }
-function stopSdk() { try { if (sdk.player) sdk.player.disconnect(); } catch { /* ignore */ } sdk.player = null; sdk.deviceId = null; sdk.state = 'off'; }
-
-/* Choose where to play: active device → this browser → any other listed device. */
-async function pickDevice() {
-  try {
-    const r = await api('GET', '/me/player/devices');
-    const ds = (r.ok && r.data && r.data.devices) || [];
-    const active = ds.find((d) => d.is_active && !d.is_restricted);
-    if (active) return { id: active.id, name: active.name, active: true };
-    if (sdk.deviceId) return { id: sdk.deviceId, name: 'NEEDLE (this browser)', active: false };
-    const any = ds.find((d) => !d.is_restricted);
-    if (any) return { id: any.id, name: any.name, active: false };
-    const why = sdk.state === 'error' ? ' NEEDLE’s built-in player could not start: ' + sdk.err
-      : sdk.state === 'unsupported' ? ' This browser does not support NEEDLE’s built-in player.'
-      : sdk.state === 'loading' ? ' NEEDLE’s built-in player is still starting — try again in a few seconds.' : '';
-    showNotice('No Spotify device is available. Open Spotify once on a phone or computer (it only has to be running), then try again.' + why,
-      [{ label: 'Choose device', fn: openDevices }]);
-  } catch (e) {
-    if (e instanceof AuthError) showGate({ error: e.message }); else toast('Could not reach Spotify.', true);
-  }
-  return null;
-}
-
-async function startPlayback(body, opts = {}) {
-  wakeSdk();
-  const dev = await pickDevice();
-  if (!dev) return false;
-  try {
-    if (!dev.active) {
-      const t = await api('PUT', '/me/player', { body: { device_ids: [dev.id], play: false } });
-      if (!t.ok) { toast(explain(t), true); return false; }
-      await sleep(500);
-    }
-    if (opts.shuffle !== undefined) {
-      const sr = await api('PUT', '/me/player/shuffle', { query: { state: !!opts.shuffle, device_id: dev.id } });
-      if (!sr.ok) toast('Could not change shuffle: ' + explain(sr), true);
-    }
-    const r = await api('PUT', '/me/player/play', { query: { device_id: dev.id }, body });
-    if (r.ok) {
-      hideNotice(); closeLibrary(); toast('Playing on ' + dev.name);
-      setTimeout(poll, 800); setTimeout(poll, 2500);
-      return true;
-    }
-    toast(explain(r), true);
-  } catch (e) {
-    if (e instanceof AuthError) showGate({ error: e.message }); else toast('Could not reach Spotify.', true);
-  }
-  return false;
-}
-async function resumeSomewhere() {
-  wakeSdk();
-  const dev = await pickDevice();
-  if (!dev) return;
-  try {
-    const r = await api('PUT', '/me/player', { body: { device_ids: [dev.id], play: true } });
-    if (r.ok) { hideNotice(); toast('Playing on ' + dev.name); setTimeout(poll, 800); setTimeout(poll, 2500); }
-    else toast(explain(r) + ' If you have not played anything lately, choose something from the library.', true);
-  } catch (e) {
-    if (e instanceof AuthError) showGate({ error: e.message }); else toast('Could not reach Spotify.', true);
-  }
-}
-
-/* =====================================================================
-   Library: browse your playlists and start them from NEEDLE
-   ===================================================================== */
-const h = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-const lib = { playlists: null, view: 'list', cur: null };
-const plTotal = (p) => (p.items && typeof p.items.total === 'number') ? p.items.total : (p.tracks && typeof p.tracks.total === 'number') ? p.tracks.total : null;
-const coverOf = (p) => (p.images && p.images[0] && p.images[0].url) || null;
-
-function openLibrary() {
-  if (S.demo) return toast('Connect Spotify to browse your playlists.');
-  wakeSdk(); initSdk();
-  $('library').hidden = false; hideNotice();
-  if (!lib.playlists) loadPlaylists(); else renderLibrary();
-}
-function closeLibrary() { $('library').hidden = true; }
-
-async function loadPlaylists() {
-  const body = $('libBody');
-  body.replaceChildren(h('p', 'lib-msg', 'Loading your playlists…'));
-  $('libTitle').textContent = 'Your playlists'; $('libBack').hidden = true; $('libSearch').hidden = true;
-  try {
-    let all = [], offset = 0;
-    for (let i = 0; i < 10; i++) {
-      const r = await api('GET', '/me/playlists', { query: { limit: 50, offset } });
-      if (!r.ok || !r.data) { if (!all.length) { body.replaceChildren(h('p', 'lib-msg', explain(r))); return; } break; }
-      const items = (r.data.items || []).filter(Boolean);
-      all = all.concat(items);
-      if (!r.data.next || !items.length) break;
-      offset += 50;
-    }
-    lib.playlists = all; lib.view = 'list'; renderLibrary();
-  } catch (e) {
-    if (e instanceof AuthError) { closeLibrary(); showGate({ error: e.message }); }
-    else body.replaceChildren(h('p', 'lib-msg', 'Could not load playlists. Check your connection and reopen the library.'));
-  }
-}
-
-function renderLibrary() { return lib.view === 'detail' && lib.cur ? renderDetail() : renderList(); }
-
-function coverEl(url, cls) {
-  const d = h('div', cls);
-  if (url) { const i = document.createElement('img'); i.src = url; i.alt = ''; i.loading = 'lazy'; i.referrerPolicy = 'no-referrer'; d.appendChild(i); }
-  return d;
-}
-function renderList() {
-  $('libTitle').textContent = 'Your playlists'; $('libBack').hidden = true; $('libSearch').hidden = false;
-  const q = $('libSearch').value.trim().toLowerCase();
-  const list = (lib.playlists || []).filter((p) => !q || (p.name || '').toLowerCase().includes(q));
-  const body = $('libBody');
-  if (!list.length) {
-    body.replaceChildren(h('p', 'lib-msg', lib.playlists && lib.playlists.length ? 'No playlists match your search.'
-      : 'No playlists found. (Spotify’s own generated playlists, like Discover Weekly, are not available to Development Mode apps.)'));
-    return;
-  }
-  const grid = h('div', 'lib-grid');
-  for (const p of list) {
-    const b = h('button', 'pl-card'); b.type = 'button';
-    b.appendChild(coverEl(coverOf(p), 'pl-cover'));
-    b.appendChild(h('span', 'pl-name', p.name || 'Untitled'));
-    const n = plTotal(p);
-    b.appendChild(h('span', 'pl-sub', [n != null ? n + ' tracks' : '', p.owner && p.owner.display_name].filter(Boolean).join(' · ')));
-    b.onclick = () => openPlaylist(p);
-    grid.appendChild(b);
-  }
-  body.replaceChildren(grid);
-}
-
-function openPlaylist(p) { lib.view = 'detail'; lib.cur = p; renderDetail(); loadTracks(p); }
-function renderDetail() {
-  const p = lib.cur;
-  $('libTitle').textContent = p.name || 'Playlist'; $('libBack').hidden = false; $('libSearch').hidden = true;
-  const head = h('div', 'pl-head');
-  head.appendChild(coverEl(coverOf(p), 'pl-cover big'));
-  const info = h('div', 'pl-info');
-  info.appendChild(h('div', 'pl-name big', p.name || 'Untitled'));
-  const n = plTotal(p);
-  info.appendChild(h('div', 'pl-sub', [p.owner && p.owner.display_name, n != null ? n + ' tracks' : ''].filter(Boolean).join(' · ')));
-  const act = h('div', 'pl-actions');
-  const play = h('button', 'cta small', 'Play'); play.type = 'button';
-  play.onclick = () => startPlayback({ context_uri: p.uri }, { shuffle: false });
-  const shuf = h('button', 'mini', 'Shuffle'); shuf.type = 'button';
-  shuf.onclick = () => startPlayback({ context_uri: p.uri }, { shuffle: true });
-  act.append(play, shuf); info.appendChild(act); head.appendChild(info);
-  const tracks = h('div', 'trk-list'); tracks.id = 'libTracks';
-  tracks.appendChild(h('p', 'lib-msg', 'Loading tracks…'));
-  $('libBody').replaceChildren(head, tracks);
-}
-async function loadTracks(p) {
-  const out = [];
-  let note = '', offset = 0;
-  try {
-    for (let i = 0; i < 3; i++) {
-      const r = await api('GET', '/playlists/' + encodeURIComponent(p.id) + '/items', { query: { limit: 100, offset } });
-      if (lib.cur !== p) return;
-      if (!r.ok || !r.data) {
-        note = (r.status === 403 || r.status === 404)
-          ? 'Spotify only lets NEEDLE list tracks for playlists you own or collaborate on. You can still press Play or Shuffle to start this playlist.'
-          : explain(r);
-        break;
-      }
-      const items = r.data.items || [];
-      items.forEach((e, k) => { const t = e && (e.item || e.track); if (t && t.uri) out.push({ t, pos: offset + k }); });
-      if (!r.data.next || !items.length) break;
-      offset += 100;
-      if (i === 2) note = 'Showing the first 300 tracks. Play or Shuffle still uses the whole playlist.';
-    }
-  } catch (e) {
-    if (lib.cur !== p) return;
-    if (e instanceof AuthError) { closeLibrary(); return showGate({ error: e.message }); }
-    note = 'Could not load tracks.';
-  }
-  if (lib.cur !== p || lib.view !== 'detail') return;
-  const box = $('libTracks'); if (!box) return;
-  const rows = out.map(({ t, pos }) => {
-    const b = h('button', 'trk'); b.type = 'button';
-    if (t.id && t.id === S.trackId) b.classList.add('now');
-    b.appendChild(h('span', 'trk-n', String(pos + 1)));
-    const mid = h('span', 'trk-mid');
-    mid.appendChild(h('span', 'trk-t', t.name || 'Unknown'));
-    const who = t.type === 'episode' ? ((t.show && t.show.name) || '') : (t.artists || []).map((a) => a.name).join(', ');
-    mid.appendChild(h('span', 'trk-a', who));
-    b.appendChild(mid);
-    b.appendChild(h('span', 'trk-d', fmt(t.duration_ms || 0)));
-    if (t.is_local) { b.disabled = true; b.title = 'Local files can’t be played from here'; }
-    else b.onclick = () => startPlayback({ context_uri: p.uri, offset: { position: pos } });
-    return b;
-  });
-  const kids = [];
-  if (note) kids.push(h('p', 'lib-msg', note));
-  if (!rows.length && !note) kids.push(h('p', 'lib-msg', 'This playlist is empty.'));
-  box.replaceChildren(...kids, ...rows);
-}
-
-/* =====================================================================
    Wiring
    ===================================================================== */
 function bind() {
-  $('btnPlay').onclick = () => { wakeSdk(); control(S.isPlaying ? 'pause' : 'play'); };
+  $('btnPlay').onclick = () => control(S.isPlaying ? 'pause' : 'play');
   $('btnPrev').onclick = () => control('prev');
   $('btnNext').onclick = () => control('next');
   $('bar').addEventListener('click', (e) => {
@@ -764,25 +685,27 @@ function bind() {
     seek(Math.round(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * S.duration));
   });
   $('btnDevices').onclick = openDevices;
-  $('btnLibrary').onclick = openLibrary;
-  $('libClose').onclick = closeLibrary;
-  $('libBack').onclick = () => { lib.view = 'list'; lib.cur = null; renderList(); };
-  $('libSearch').addEventListener('input', renderList);
-  $('library').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeLibrary(); });
+  $('btnLyrics').onclick = () => setLyrics(!S.lyricsOn);
+  $('lyLines').addEventListener('click', (e) => {          // tap a synced line to jump there
+    const el = e.target.closest('.ly-line');
+    if (!el || !LY.lines || el.dataset.i == null) return;
+    const b = document.body;
+    if (b.classList.contains('ambient') && !b.classList.contains('peek')) return;   // first tap only wakes the UI
+    seek(LY.lines[+el.dataset.i].t);
+  });
+  addEventListener('resize', () => { if (S.lyricsOn) lyCenter(true); });
+  setInterval(() => { if (!document.hidden) lyTick(false); }, 200);
   $('btnDevicesClose').onclick = () => { $('devicesModal').hidden = true; };
   $('btnAmbient').onclick = () => setAmbient(!document.body.classList.contains('ambient'));
   const canFs = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
   if (canFs) $('btnFull').onclick = toggleFullscreen; else $('btnFull').hidden = true;
   $('btnLogout').onclick = () => {
-    store.del(K.tokens); stopSdk(); lib.playlists = null; lib.view = 'list'; lib.cur = null; closeLibrary(); S.isPlaying = false; S.trackId = null; clearTimeout(pollTimer);
+    store.del(K.tokens); S.isPlaying = false; S.trackId = null; S.track = null; clearTimeout(pollTimer);
+    lySeq++; LY.id = null; lyClear();
     renderPlaying(); hideNotice(); showGate({});
   };
   $('btnConnect').onclick = () => {
-    if (!clientId()) {
-      const v = $('cidInput').value.trim();
-      if (!/^[a-f0-9]{32}$/i.test(v)) return showGate({ error: 'That doesn’t look like a Client ID (32 letters/numbers). Copy it from the Spotify Dashboard.' });
-      store.set(K.cid, v);
-    }
+    if (!clientId()) return showGate({ error: 'NEEDLE has not been configured by its owner yet. Please try again after the owner adds the shared Spotify Client ID to config.js.' });
     login();
   };
   $('btnDemo').onclick = () => { history.replaceState({}, '', redirectUri() + '?demo'); startDemo(); };
@@ -791,13 +714,12 @@ function bind() {
   };
   $('stage').addEventListener('click', peek);
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { closeLibrary(); $('devicesModal').hidden = true; return; }
     if (e.target && e.target.tagName === 'INPUT') return;
-    if (!$('library').hidden) return;
     if (e.code === 'Space') { e.preventDefault(); control(S.isPlaying ? 'pause' : 'play'); }
     else if (e.key === 'ArrowRight') control('next');
     else if (e.key === 'ArrowLeft') control('prev');
-    else if (e.key === 'a' || e.key === 'A') setAmbient(!document.body.classList.contains('ambient'));
+    else if (e.key === 'l' || e.key === 'L') setLyrics(!S.lyricsOn);
+    else if (e.key === 'a' || e.key === 'A')setAmbient(!document.body.classList.contains('ambient'));
     else if ((e.key === 'f' || e.key === 'F') && canFs) toggleFullscreen();
   });
   document.addEventListener('visibilitychange', () => {
@@ -811,14 +733,14 @@ function bind() {
 async function init() {
   bind();
   if (store.get(K.ambient) === '1') document.body.classList.add('ambient');
+  if (store.get(K.lyrics) === '1') setLyrics(true);
   setBackground(null);
   setLabel({ title: 'NEEDLE', artists: 'Connect · Play · Spin', album: '' });
   if (new URLSearchParams(location.search).has('demo')) return startDemo();
   try { await handleCallback(); }
   catch (e) { return showGate({ error: e.message }); }
   if (!tokens()) return showGate({});
-  if (!hasScopes()) return showGate({ error: 'NEEDLE now also needs playlist and in-browser playback permissions. Tap Reconnect once.' });
-  hideGate(); poll(); initSdk();
+  hideGate(); poll();
 }
 init();
 })();

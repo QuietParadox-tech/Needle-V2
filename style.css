@@ -208,37 +208,117 @@ body.playing .i-play{display:none}
   .bg-layer,.art,#sleeve,#record,#tonearm{transition-duration:.01s}
 }
 
-/* ---------- library ---------- */
-.sheet{position:fixed;inset:0;z-index:21;display:none;place-items:center;padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom));background:rgba(16,9,6,.62);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
-.sheet:not([hidden]){display:grid}
-.sheet-card{width:min(1000px,100%);height:min(780px,100%);display:flex;flex-direction:column;border-radius:20px;overflow:hidden;
-  background:rgba(34,21,13,.96);border:1px solid rgba(240,227,199,.15);box-shadow:0 20px 60px rgba(0,0,0,.55)}
-.sheet-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(240,227,199,.1)}
-.sheet-head h2{flex:1;margin:0;font-size:17px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#libSearch{width:min(230px,38%);padding:9px 12px;border-radius:999px;border:1px solid rgba(240,227,199,.22);background:rgba(0,0,0,.3);color:var(--cream);font:inherit;font-size:14px;-webkit-user-select:text;user-select:text}
-#libBody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px}
-.lib-msg{opacity:.75;font-size:14px;line-height:1.5;margin:6px 2px 14px}
-.lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:16px}
-.pl-card{display:flex;flex-direction:column;gap:6px;text-align:left;border:0;background:none;padding:0;cursor:pointer;min-width:0}
-.pl-cover{aspect-ratio:1;border-radius:8px;overflow:hidden;background:linear-gradient(135deg,#6b4a30,#2a1b12);box-shadow:0 6px 18px rgba(0,0,0,.35)}
-.pl-cover img{width:100%;height:100%;object-fit:cover;display:block}
-.pl-card:active .pl-cover{transform:scale(.97)}
-.pl-name{font-size:14px;font-weight:600;line-height:1.25;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
-.pl-sub{font-size:12px;opacity:.6;line-height:1.3}
-.pl-head{display:flex;gap:18px;align-items:flex-end;margin-bottom:16px}
-.pl-cover.big{width:min(150px,30vw);flex:none}
-.pl-info{min-width:0}
-.pl-name.big{font-size:22px;-webkit-line-clamp:3}
-.pl-actions{display:flex;gap:10px;align-items:center;margin-top:14px}
-.cta.small{width:auto;padding:10px 26px;font-size:15px}
-.trk-list{display:flex;flex-direction:column}
-.trk{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:10px 8px;border:0;border-radius:10px;background:none;cursor:pointer}
-.trk:active{background:rgba(240,227,199,.1)}
-.trk:disabled{opacity:.4;cursor:default}
-.trk-n{width:28px;text-align:right;font-size:12px;opacity:.5;font-variant-numeric:tabular-nums;flex:none}
-.trk-mid{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
-.trk-t{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.trk-a{font-size:12px;opacity:.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.trk-d{font-size:12px;opacity:.5;font-variant-numeric:tabular-nums;flex:none}
-.trk.now .trk-t{color:#e9b86d}
-@media (max-width:560px){.pl-head{flex-direction:column;align-items:flex-start}#libSearch{width:42%}}
+/* ---------- lyrics (shown on the sleeve, so the scene never changes) ---------- */
+#sleeve{container-type:size}
+.sleeve-gloss{z-index:3}
+.art{transition:opacity 1s ease,transform 1.4s cubic-bezier(.2,.7,.2,1),filter .7s ease}
+body.lyrics .art{filter:blur(calc(var(--u)*.035)) brightness(.5) saturate(1.15)}
+body.lyrics .art.show{transform:scale(1.12)}
+
+.ly-layer{
+  position:absolute;inset:0;z-index:2;opacity:0;visibility:hidden;pointer-events:none;
+  background:linear-gradient(180deg,rgba(20,11,6,.5),rgba(20,11,6,.68));
+  transition:opacity .6s ease,visibility 0s linear .6s;
+}
+body.lyrics .ly-layer{opacity:1;visibility:visible;pointer-events:auto;transition-delay:0s}
+
+.ly-scroll{
+  position:absolute;inset:0;overflow:hidden;
+  -webkit-mask-image:linear-gradient(transparent 0,#000 17%,#000 80%,transparent 100%);
+          mask-image:linear-gradient(transparent 0,#000 17%,#000 80%,transparent 100%);
+}
+.ly-scroll.plain{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;scrollbar-width:none}
+.ly-scroll.plain::-webkit-scrollbar{display:none}
+.ly-lines{position:relative;transition:transform .6s cubic-bezier(.3,.8,.3,1);will-change:transform}
+.ly-lines.snap{transition:none}
+.ly-scroll.plain .ly-lines{transform:none!important;padding:20cqh 0 24cqh}
+
+.ly-line{
+  padding:1.5cqw 8cqw;font-size:max(13px,6.3cqw);line-height:1.2;font-weight:700;letter-spacing:-.005em;
+  color:rgba(240,227,199,.36);cursor:pointer;overflow-wrap:anywhere;
+  transform-origin:0 50%;transition:color .45s ease,transform .45s cubic-bezier(.3,.8,.3,1);
+}
+.ly-line.past{color:rgba(240,227,199,.24)}
+.ly-line.cur{color:var(--cream);transform:scale(1.04)}
+.ly-line.gap{font-size:max(12px,5cqw);letter-spacing:.35em}
+.ly-scroll.plain .ly-line{color:rgba(240,227,199,.88);cursor:default;font-weight:600;font-size:max(13px,5.4cqw);padding:.9cqw 8cqw}
+.ly-scroll.plain .ly-line.blank{padding:2.2cqw 0}
+
+.ly-status{
+  position:absolute;inset:0;display:grid;place-items:center;padding:0 12cqw;text-align:center;
+  font-size:max(12px,4.6cqw);letter-spacing:.04em;color:rgba(240,227,199,.75);
+  pointer-events:none;opacity:0;transition:opacity .4s ease;
+}
+.ly-status.show{opacity:1}
+.ly-status.loading{animation:lyPulse 1.5s ease-in-out infinite}
+@keyframes lyPulse{50%{opacity:.4}}
+.ly-credit{
+  position:absolute;left:0;right:0;bottom:2.4cqw;text-align:center;pointer-events:none;
+  font-size:max(9px,2.5cqw);letter-spacing:.3em;text-transform:uppercase;color:rgba(240,227,199,.38);
+}
+button.icon.on{background:rgba(240,227,199,.2)}
+
+@media (prefers-reduced-motion:reduce){
+  .ly-layer,.ly-lines,.ly-line,.ly-status{transition-duration:.01s}
+  .ly-status.loading{animation:none}
+}
+
+/* keep lyrics inside the part of the sleeve the record doesn't cover */
+@media (orientation:landscape){
+  .ly-line,.ly-scroll.plain .ly-line{padding-right:31cqw}
+  .ly-line{font-size:max(13px,5.8cqw)}
+  .ly-scroll.plain .ly-line{font-size:max(13px,5cqw)}
+  .ly-status{padding:0 32cqw 0 10cqw}
+  .ly-credit{right:30cqw}
+}
+@media (orientation:portrait){
+  .ly-scroll{
+    -webkit-mask-image:linear-gradient(transparent 0,#000 15%,#000 58%,transparent 76%);
+            mask-image:linear-gradient(transparent 0,#000 15%,#000 58%,transparent 76%);
+  }
+  .ly-credit{bottom:auto;top:2.4cqw}
+}
+
+/* ---------- slow, luxe record ---------- */
+:root{ --spin:10s; --gold:#d9bb74; --gold-hi:#f4e2b0; --gold-lo:#7a5f2a; }
+#disc{animation-duration:var(--spin)}
+#record{
+  box-shadow:0 calc(var(--u)*.05) calc(var(--u)*.12) rgba(0,0,0,.6),
+             0 calc(var(--u)*.01) calc(var(--u)*.025) rgba(0,0,0,.5),
+             0 0 0 calc(var(--u)*.003) rgba(217,187,116,.22);
+}
+/* fine champagne lines between "tracks" */
+#disc::after{
+  content:"";position:absolute;inset:0;border-radius:50%;pointer-events:none;
+  background:
+    radial-gradient(circle closest-side,transparent 0 57%,rgba(217,187,116,.20) 57.3%,transparent 57.9%,
+      transparent 66%,rgba(217,187,116,.12) 66.3%,transparent 66.8%,
+      transparent 78%,rgba(217,187,116,.12) 78.3%,transparent 78.8%,
+      transparent 90%,rgba(217,187,116,.18) 90.3%,transparent 90.9%,
+      transparent 97%,rgba(217,187,116,.30) 97.3%,transparent 98%);
+}
+/* light that stays put while the vinyl turns beneath it */
+#record .sheen{
+  background:
+    conic-gradient(from -25deg,transparent 0 6%,rgba(255,238,200,.22) 11%,rgba(255,238,200,.03) 17%,transparent 24% 50%,rgba(255,238,200,.17) 58%,rgba(255,238,200,.02) 65%,transparent 72%),
+    radial-gradient(circle at 28% 22%,rgba(255,244,220,.13),transparent 48%);
+}
+/* gold-foil label */
+.label{
+  color:var(--gold-hi);
+  background:
+    conic-gradient(from 20deg,rgba(217,187,116,.14),transparent 22%,rgba(217,187,116,.10) 50%,transparent 74%,rgba(217,187,116,.14)),
+    radial-gradient(circle closest-side,#1b1610,#070605);
+  box-shadow:
+    inset 0 0 0 calc(var(--u)*.0042) var(--gold),
+    inset 0 0 0 calc(var(--u)*.0105) #0a0907,
+    inset 0 0 0 calc(var(--u)*.0122) rgba(217,187,116,.5),
+    0 0 0 calc(var(--u)*.022) #040404,
+    0 0 0 calc(var(--u)*.0235) rgba(217,187,116,.25);
+}
+.ring-text{fill:var(--gold);opacity:.9}
+.l-artist{opacity:.9}
+.hole{
+  background:radial-gradient(circle at 35% 30%,#fff3cf,#c9a45a 45%,var(--gold-lo));
+  box-shadow:0 0 0 4cqw #0f0f0f,0 0 0 4.6cqw rgba(217,187,116,.35);
+}
