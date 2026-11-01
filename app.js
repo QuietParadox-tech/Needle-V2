@@ -1022,10 +1022,10 @@ function rrCard(t, i) {
   else { li.querySelector('.a').textContent = t.owner ? 'by ' + t.owner : 'Playlist'; li.querySelector('.al').textContent = t.total != null ? t.total + ' tracks' : ''; }
   if (t.kind === 'track') {
     artBtn.onclick = () => rrDetail(t);
-    go.onclick = li.querySelector('.rr-meta').onclick = () => rrLaunch(li.querySelector('.rr-disc'), t.id, () => rrPlay(t));
+    go.onclick = li.querySelector('.rr-meta').onclick = () => rrLaunch(li.querySelector('.rr-disc'), t.id, () => rrPlay(t), t);
   } else {
     artBtn.onclick = li.querySelector('.rr-meta').onclick = () => rrOpenSub(t);
-    go.onclick = () => rrLaunch(li.querySelector('.rr-disc'), null, () => playBody({ context_uri: t.uri }, t.name));
+    go.onclick = () => rrLaunch(li.querySelector('.rr-disc'), null, () => playBody({ context_uri: t.uri }, t.name), { name: t.name, artists: t.kind === 'album' ? t.artists : (t.owner ? 'by ' + t.owner : 'Playlist'), album: '' });
   }
   return li;
 }
@@ -1109,7 +1109,8 @@ function rrPlayAll(shuffle) {
 }
 /* ----- the record leaves the crate and lands on the turntable ----- */
 let rrBusy = false;
-async function rrLaunch(fromEl, trackId, run) {
+function rrCrumbInfo() { return { name: $('rrCrumb').textContent, artists: 'NEEDLE Record Room', album: '' }; }
+async function rrLaunch(fromEl, trackId, run, info) {
   if (trackId && trackId === S.trackId) return run();                 // already on the turntable: just play/pause
   if (rrBusy) return; rrBusy = true;
   try {
@@ -1124,19 +1125,26 @@ async function rrLaunch(fromEl, trackId, run) {
     if (ok !== true) { if (card) card.classList.remove('pulling'); return; }
     const wait = 580 - (performance.now() - t0); if (wait > 0) await sleep(wait);
     const r = fromEl.getBoundingClientRect();
-    rrFly(r.width ? { left: r.left, top: r.top, width: r.width, height: r.height } : null, trackId, card, card ? pull : 1);
+    rrFly(r.width ? { left: r.left, top: r.top, width: r.width, height: r.height } : null, trackId, card, card ? pull : 1, info);
   } finally { rrBusy = false; }
 }
-async function rrWaitSwap(id) {                                       // until the real record shows the new song
-  for (let i = 0; i < 30 && id && S.trackId !== id; i++) await sleep(100);
-  await sleep(id ? 250 : 900);
+function fillLabel(root, t) {                                         // same text and sizing rules as the real record's label
+  const title = t.name || t.title || '', len = title.length, size = len <= 9 ? 14 : len <= 16 ? 11.5 : len <= 26 ? 9.2 : 7.4;
+  const ts = root.querySelector('.l-title span'); ts.textContent = title; ts.parentElement.style.fontSize = size + 'cqw';
+  root.querySelector('.l-artist span').textContent = t.artists || '';
+  const alb = (t.album || '').toUpperCase(), tp = root.querySelectorAll('textPath')[1]; if (tp) tp.textContent = alb.length > 30 ? alb.slice(0, 29) + '…' : alb;
+}
+async function rrWaitSwap(id, prev) {                                  // until the real record shows the new song
+  for (let i = 0; i < 30 && (id ? S.trackId !== id : S.trackId === prev); i++) await sleep(100);
+  await sleep(250);
   for (let i = 0; i < 40 && $('stage').classList.contains('changing'); i++) await sleep(100);
 }
-function rrFly(r0, trackId, card, pull) {
+function rrFly(r0, trackId, card, pull, info) {
   rrClose();                                                          // 2. the drawer slides shut ...
-  const st = $('stage'), rec = $('record');
+  const st = $('stage'), rec = $('record'), disc = $('disc');
   const tidy = () => { if (card) card.classList.remove('pulling', 'gone'); };
   if (!r0 || !st.offsetWidth || !st.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return setTimeout(tidy, 700);
+  const prevId = S.trackId;
   const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
   const S1 = rec.offsetWidth;                                         // the real record's size and spot (layout values: unaffected by the stage zoom while the drawer closes)
   const cx1 = (vw - st.offsetWidth) / 2 + rec.offsetLeft + S1 / 2, cy1 = (vh - st.offsetHeight) / 2 + rec.offsetTop + S1 / 2;
@@ -1144,29 +1152,52 @@ function rrFly(r0, trackId, card, pull) {
   const hx = vw / 2, hy = vh / 2 - S1 * 0.02, hk = Math.min(0.95, Math.min(vw, vh) * 0.8 / S1);   // the "show it to the room" spot: centre of the screen
   document.body.classList.add('launching'); S.launching = true; renderArm();   // ... the old record is lifted off and the tonearm swings back to rest
   if (card) card.classList.add('gone');
-  const el = document.createElement('div'); el.className = 'rr-fly'; el.setAttribute('aria-hidden', 'true');
-  el.innerHTML = '<i class="lab d"></i><i class="lab o"></i>'; el.style.width = el.style.height = S1 + 'px'; document.body.appendChild(el);
-  const T = (x, y, k, rot) => 'translate(' + (x - S1 / 2) + 'px,' + (y - S1 / 2) + 'px) scale(' + k + ') rotate(' + rot + 'deg)';
-  const sh = (d, b) => '0 ' + Math.round(S1 * d) + 'px ' + Math.round(S1 * b) + 'px rgba(0,0,0,.55)';
-  const D = 2500;
-  if (pull < 1) el.animate([{ clipPath: 'inset(0 0 ' + ((1 - pull) * 100) + '% 0)' }, { clipPath: 'inset(0 0 0% 0)' }], { duration: 300, fill: 'forwards', easing: 'ease-out' });   // only the part that was out of the sleeve shows at first, so there is no pop when it takes off
+  // the flying record is a copy of the real one (same vinyl, sheen, gold label) carrying the new song's label
+  const el = document.createElement('div'); el.className = 'rr-fly'; el.setAttribute('aria-hidden', 'true'); el.style.width = el.style.height = S1 + 'px';
+  const fd = disc.cloneNode(true); fd.removeAttribute('id'); fd.classList.add('f-disc'); fd.querySelectorAll('[id]').forEach((n) => n.removeAttribute('id'));
+  const track = trackId && info && info.name ? info : (S.track && trackId === S.trackId ? { name: S.track.title, artists: S.track.artists, album: S.track.album } : info);
+  if (track) fillLabel(fd, track);
+  const sheen = document.createElement('div'); sheen.className = 'sheen'; const orange = document.createElement('i'); orange.className = 'o';
+  const drop = document.createElement('i'); drop.className = 'drop';   // soft shadow: a gradient disc (no big blurred box-shadow, so no square edges)
+  el.append(drop, fd, sheen, orange); document.body.appendChild(el);
+  try { const real = disc.getAnimations().find((x) => x.animationName === 'spin'), mine = fd.getAnimations()[0]; fd.style.rotate = getComputedStyle(disc).rotate === 'none' ? '' : getComputedStyle(disc).rotate; if (real && mine) { mine.currentTime = real.currentTime; mine.play(); } } catch { /* spinning in sync is a nicety */ }
+  const spot = document.createElement('div'); spot.className = 'rr-spot'; document.body.appendChild(spot);
+  spot.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 700, fill: 'forwards', easing: 'ease-out' });
+  const T = (x, y, k) => 'translate(' + (x - S1 / 2) + 'px,' + (y - S1 / 2) + 'px) scale(' + k + ')';
+  const sh = (d, b, o) => '0 ' + Math.round(S1 * d) + 'px ' + Math.round(S1 * b) + 'px rgba(0,0,0,' + o + ')';
+  const D = 2700, EO = 'cubic-bezier(.16,.84,.24,1)', IO = 'cubic-bezier(.5,0,.22,1)';
+  el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, fill: 'forwards' });
+  if (pull < 1) { const cl = el.animate([{ clipPath: 'inset(0 0 ' + ((1 - pull) * 100) + '% 0)' }, { clipPath: 'inset(0 0 0% 0)' }], { duration: 320, easing: 'ease-out' }); cl.onfinish = () => cl.cancel(); }   // no fill: a lingering clip would cut the shadow into a square   // only the part that was out of the sleeve shows at first: no pop when it takes off
   const a = el.animate([
-    { transform: T(cx0, cy0, k0, 0), boxShadow: sh(0.01, 0.03), offset: 0, easing: 'cubic-bezier(.3,.7,.2,1)' },
-    { transform: T(hx, hy, hk, 130), boxShadow: sh(0.14, 0.3), offset: 0.3 },                          // 3. shown to the screen
-    { transform: T(hx, hy, hk * 1.03, 205), boxShadow: sh(0.16, 0.34), offset: 0.5, easing: 'cubic-bezier(.5,0,.2,1)' },
-    { transform: T(cx1, cy1, 1.07, 305), boxShadow: sh(0.07, 0.15), offset: 0.82, easing: 'cubic-bezier(.3,.6,.3,1)' },   // 4. hovers over the platter
-    { transform: T(cx1, cy1, 1, 360), boxShadow: sh(0.025, 0.06), offset: 1 },                          // ... and is set down
+    { transform: T(cx0, cy0, k0), offset: 0, easing: EO },
+    { transform: T(hx, hy, hk), offset: 0.3, easing: 'ease-in-out' },                                    // 3. shown to the screen
+    { transform: T(hx, hy - S1 * 0.012, hk * 1.025), offset: 0.52, easing: IO },                          //    a gentle hover
+    { transform: T(cx1, cy1, 1.07), offset: 0.85, easing: 'cubic-bezier(.3,.7,.3,1)' },                  // 4. glides over the platter
+    { transform: T(cx1, cy1, 0.992), offset: 0.95, easing: 'ease-out' },                                  //    set down ...
+    { transform: T(cx1, cy1, 1), offset: 1 },                                                              //    ... and settled
   ], { duration: D, fill: 'forwards' });
-  const lab = el.querySelector('.o'); lab.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 700, delay: 350, fill: 'forwards', easing: 'ease' });   // the cabinet's orange label turns into NEEDLE's dark one
+  const dy = (f) => 'translateY(' + Math.round(S1 * f) + 'px)';
+  drop.animate([                                                                                          // the shadow is far and soft while the record is held up, tight once it is down
+    { transform: dy(0.01) + ' scale(1.02)', opacity: 0, offset: 0, easing: 'linear' },
+    { transform: dy(0.012) + ' scale(1.02)', opacity: 0.3, offset: 0.12, easing: EO },
+    { transform: dy(0.07) + ' scale(1.12)', opacity: 0.8, offset: 0.3, easing: 'ease-in-out' },
+    { transform: dy(0.08) + ' scale(1.14)', opacity: 0.85, offset: 0.52, easing: IO },
+    { transform: dy(0.05) + ' scale(1.1)', opacity: 0.7, offset: 0.85, easing: 'cubic-bezier(.3,.7,.3,1)' },
+    { transform: dy(0.015) + ' scale(1.03)', opacity: 0.55, offset: 1 },
+  ], { duration: D, fill: 'forwards' });
+  orange.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 650, delay: 300, fill: 'forwards', easing: 'ease' });   // the cabinet's orange label turns into NEEDLE's gold one
   let released = false;
   const release = async () => {
     if (released) return; released = true;
-    document.body.classList.remove('launching');                      // the real record fades back in as the flyer fades out
-    el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 380, fill: 'forwards' }).onfinish = () => el.remove();
-    await sleep(300);
+    try { const real = disc.getAnimations().find((x) => x.animationName === 'spin'), mine = fd.getAnimations()[0]; if (real && mine) { mine.currentTime = real.currentTime; if (real.playState === 'paused') mine.pause(); fd.style.rotate = getComputedStyle(disc).rotate === 'none' ? '' : getComputedStyle(disc).rotate; } } catch { /* ignore */ }
+    if (!trackId && S.track) fillLabel(fd, { name: S.track.title, artists: S.track.artists, album: S.track.album });
+    spot.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 600, fill: 'forwards', easing: 'ease-in' }).onfinish = () => spot.remove();
+    document.body.classList.remove('launching');                      // the real record fades back in as the copy fades out: they look identical
+    el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 420, fill: 'forwards', easing: 'ease-in-out' }).onfinish = () => el.remove();
+    await sleep(380);
     S.launching = false; renderArm(); tidy();                         // 5. last of all, the tonearm lowers onto the record
   };
-  a.onfinish = async () => { await rrWaitSwap(trackId); release(); };
+  a.onfinish = async () => { await rrWaitSwap(trackId, prevId); release(); };
   a.oncancel = release;
   setTimeout(release, 10000);                                         // never leave the turntable stuck
 }
@@ -1252,7 +1283,7 @@ function bindRoom() {
     n.focus(); rrSetTab(n.dataset.tab); e.stopPropagation();
   });
   $('rrBack').onclick = rrBack;
-  $('rrPlayAll').onclick = () => rrLaunch($('rrPlayAll'), null, () => rrPlayAll(false)); $('rrShuffle').onclick = () => rrLaunch($('rrShuffle'), null, () => rrPlayAll(true));
+  $('rrPlayAll').onclick = () => rrLaunch($('rrPlayAll'), null, () => rrPlayAll(false), rrCrumbInfo()); $('rrShuffle').onclick = () => rrLaunch($('rrShuffle'), null, () => rrPlayAll(true), rrCrumbInfo());
   $('rrSearchBtn').onclick = () => {
     const row = $('rrSearchRow'), show = row.hidden; row.hidden = !show; $('rrSearchBtn').setAttribute('aria-expanded', show);
     if (show) $('rrSearch').focus(); else { $('rrSearch').value = ''; RR.q = ''; rrRender(true); }
@@ -1262,7 +1293,7 @@ function bindRoom() {
   $('rrSearch').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); if ($('rrSearch').value) { $('rrSearch').value = ''; RR.q = ''; rrRender(true); } else $('rrSearchBtn').click(); } });
   $('rrBody').addEventListener('scroll', () => { const b = $('rrBody'); if (b.scrollTop + b.clientHeight > b.scrollHeight - 420) rrMore(); }, { passive: true });
   $('rrDBack').onclick = () => { rrDetailClose(); };
-  $('rrDPlay').onclick = () => { const t = RR.detail; if (t) rrLaunch($('rrDArt'), t.id, () => rrPlay(t)); };
+  $('rrDPlay').onclick = () => { const t = RR.detail; if (t) rrLaunch($('rrDArt'), t.id, () => rrPlay(t), t); };
   $('rrNowBtn').onclick = () => control(S.isPlaying ? 'pause' : 'play');
   document.addEventListener('keydown', (e) => {            // keep focus inside the drawer while it is open
     if (e.key !== 'Tab' || !RR.open || !$('devicesModal').hidden) return;
