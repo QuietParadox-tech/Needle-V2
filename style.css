@@ -667,7 +667,6 @@ body.room-open .ui{opacity:.35;transition:opacity .45s}
 .room[data-theme="dark"] .rr-ill .a{fill:#3b291d}.room[data-theme="dark"] .rr-ill .b{fill:#241710}
 .room[data-theme="dark"] .rr-ill{stroke:#f3e3c3}
 .room[data-theme="dark"] .rr-cat{background:rgba(0,0,0,.6)}
-.rr-theme .moon{display:none}.room[data-theme="dark"] .rr-theme .sun{display:none}.room[data-theme="dark"] .rr-theme .moon{display:block}
 .room,.rr-body,.rr-bar,.rr-front,.rr-detail{transition:background-color .35s ease,color .35s ease}
 @media (max-width:699px){
   .rr-stamp{top:auto;right:14px;bottom:12px}
@@ -680,3 +679,12 @@ body.dark .vignette{background:radial-gradient(120% 100% at 55% 50%,transparent 
 body.dark .grain{opacity:.09}
 /* the background reaches past the bottom edge, so iOS toolbars / home-indicator areas never show a bare strip */
 #bg{bottom:-90px}
+
+/* the record flying from the crate to the turntable */
+.rr-fly{
+  position:fixed;left:0;top:0;z-index:40;border-radius:50%;pointer-events:none;will-change:transform;
+  background:repeating-radial-gradient(circle at 50% 50%,#1b1612 0 .5%,#0a0807 .5% 1%);
+  box-shadow:0 5% 9% rgba(0,0,0,.55),0 0 0 .3% rgba(217,187,116,.25);
+}
+.rr-fly::before{content:"";position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 20deg,transparent 0 10%,rgba(255,255,255,.16) 16%,transparent 26% 60%,rgba(255,255,255,.12) 68%,transparent 78%)}
+.rr-fly::after{content:"";position:absolute;inset:33%;border-radius:50%;background:radial-gradient(circle,#d9bb74 0 4%,#16100c 4.5% 100%);box-shadow:inset 0 0 0 2px rgba(217,187,116,.55)}

@@ -380,7 +380,7 @@ function applyTheme() {
   const t = themeNow(), dark = t === 'dark';
   document.body.classList.toggle('dark', dark);
   const room = $('room'); if (room) room.dataset.theme = t;
-  for (const id of ['btnTheme', 'rrTheme']) { const b = $(id); if (!b) continue; b.setAttribute('aria-pressed', dark); b.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode'); b.title = dark ? 'Light mode' : 'Dark mode'; }
+  for (const id of ['btnTheme']) { const b = $(id); if (!b) continue; b.setAttribute('aria-pressed', dark); b.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode'); b.title = dark ? 'Light mode' : 'Dark mode'; }
   setBackground(curPal);
 }
 function toggleTheme() { store.set(K.theme, themeNow() === 'dark' ? 'light' : 'dark'); applyTheme(); }
@@ -801,10 +801,12 @@ async function playBody(body, name, deviceId, shuffle) {
       WAIT.ctx = null; $('devicesModal').hidden = true; hideNotice(); toast('Playing ' + name); expectPlaying();
       if (shuffle) api('PUT', '/me/player/shuffle', { query: { state: 'true' } }).catch(() => {});
       setTimeout(poll, 800);
+      return true;
     } else if (r.status === 404 && LOCAL.id && !deviceId) { return playBody(body, name, LOCAL.id, shuffle); }   // no active device: play here
     else if (r.status === 404) { WAIT.ctx = { body, name, shuffle }; toast('No active device. Pick where to play ' + name + '.', true); openDevices(); }
     else toast(explain(r), true);
   } catch (e) { if (e instanceof AuthError) showGate({ error: e.message }); else toast('Could not reach Spotify.', true); }
+  return false;
 }
 
 /* =====================================================================
@@ -1020,10 +1022,10 @@ function rrCard(t, i) {
   else { li.querySelector('.a').textContent = t.owner ? 'by ' + t.owner : 'Playlist'; li.querySelector('.al').textContent = t.total != null ? t.total + ' tracks' : ''; }
   if (t.kind === 'track') {
     artBtn.onclick = () => rrDetail(t);
-    go.onclick = li.querySelector('.rr-meta').onclick = () => rrPlay(t);
+    go.onclick = li.querySelector('.rr-meta').onclick = () => rrLaunch(li.querySelector('.rr-disc'), t.id, () => rrPlay(t));
   } else {
     artBtn.onclick = li.querySelector('.rr-meta').onclick = () => rrOpenSub(t);
-    go.onclick = () => playBody({ context_uri: t.uri }, t.name);
+    go.onclick = () => rrLaunch(li.querySelector('.rr-disc'), null, () => playBody({ context_uri: t.uri }, t.name));
   }
   return li;
 }
@@ -1102,6 +1104,40 @@ function rrPlayAll(shuffle) {
   if (shuffle) for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
   return playBody({ uris: list.slice(0, 100).map((x) => x.uri) }, v.title, null, shuffle);
 }
+/* ----- the record leaves the crate and lands on the turntable ----- */
+async function rrLaunch(fromEl, trackId, run) {
+  if (trackId && trackId === S.trackId) return run();                 // already on the turntable: just play/pause
+  const r = fromEl && fromEl.getBoundingClientRect(), rect = r && r.width ? { left: r.left, top: r.top, width: r.width, height: r.height } : null;   // measured now, before the drawer moves
+  const ok = await run();
+  if (ok === true) rrFly(rect, trackId);
+}
+function rrFly(r0, trackId) {
+  rrClose();                                                          // pushes the drawer shut so the turntable shows
+  const st = $('stage'), rec = $('record');
+  if (!r0 || !st.offsetWidth || matchMedia('(prefers-reduced-motion: reduce)').matches || !st.animate) return;
+  const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+  const S1 = rec.offsetWidth;                                         // the real record's size and spot (layout values, so the stage's zoom while the drawer closes doesn't matter)
+  const cx1 = (vw - st.offsetWidth) / 2 + rec.offsetLeft + S1 / 2, cy1 = (vh - st.offsetHeight) / 2 + rec.offsetTop + S1 / 2;
+  const cx0 = r0.left + r0.width / 2, cy0 = r0.top + r0.height / 2, k0 = Math.max(0.14, Math.min(r0.width, r0.height) / S1);
+  const el = document.createElement('div'); el.className = 'rr-fly'; el.setAttribute('aria-hidden', 'true');
+  el.style.width = el.style.height = S1 + 'px'; document.body.appendChild(el);
+  const T = (x, y, k, rot) => 'translate(' + (x - S1 / 2) + 'px,' + (y - S1 / 2) + 'px) scale(' + k + ') rotate(' + rot + 'deg)';
+  const mx = (cx0 + cx1) / 2, my = Math.min(cy0, cy1) - Math.max(50, S1 * 0.14);
+  const a = el.animate([
+    { transform: T(cx0, cy0, k0, 0), offset: 0 },
+    { transform: T(cx0, cy0 - 22, k0 * 1.1, -25), offset: 0.14 },
+    { transform: T(mx, my, Math.max(k0, 0.5) * 1.08, 150), offset: 0.55 },
+    { transform: T(cx1, cy1, 1.05, 335), offset: 0.88 },
+    { transform: T(cx1, cy1, 1, 360), offset: 1 },
+  ], { duration: 1150, easing: 'cubic-bezier(.4,.05,.25,1)', fill: 'forwards' });
+  const done = () => { el.remove(); };
+  a.onfinish = async () => {                                          // stay on the platter until the real record shows the new song
+    for (let i = 0; i < 28 && trackId && S.trackId !== trackId; i++) await sleep(100);
+    if (!trackId) await sleep(500); else await sleep(450);
+    el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 320, fill: 'forwards' }).onfinish = done;
+  };
+  a.oncancel = done;
+}
 function rrSync() {                                       // mark what is spinning now; cheap, runs on every player update
   const room = $('room'); if (!RR.open) return;
   room.classList.toggle('rr-playing', !!S.isPlaying);
@@ -1174,8 +1210,7 @@ function rrDetailClose(quick) {
 }
 function rrEscape() { if (!RR.open) return false; if (!rrDetailClose()) rrClose(); return true; }
 function bindRoom() {
-  if (!$('room') || !$('rrTheme')) { console.warn('NEEDLE: index.html is out of date (no Record Room markup). Upload every file from the zip.'); const b = $('btnLibrary'); if (b) b.hidden = true; return; }   // never let a half-uploaded site break the player
-  $('rrTheme').onclick = toggleTheme;
+  if (!$('room') || !$('rrNow')) { console.warn('NEEDLE: index.html is out of date (no Record Room markup). Upload every file from the zip.'); const b = $('btnLibrary'); if (b) b.hidden = true; return; }   // never let a half-uploaded site break the player
   $('btnLibrary').onclick = () => (RR.open ? rrClose() : rrOpen());
   $('rrClose').onclick = rrClose; $('rrScrim').onclick = rrClose;
   $('rrTabs').addEventListener('click', (e) => { const b = e.target.closest('button[data-tab]'); if (b) rrSetTab(b.dataset.tab); });
@@ -1185,7 +1220,7 @@ function bindRoom() {
     n.focus(); rrSetTab(n.dataset.tab); e.stopPropagation();
   });
   $('rrBack').onclick = rrBack;
-  $('rrPlayAll').onclick = () => rrPlayAll(false); $('rrShuffle').onclick = () => rrPlayAll(true);
+  $('rrPlayAll').onclick = () => rrLaunch($('rrPlayAll'), null, () => rrPlayAll(false)); $('rrShuffle').onclick = () => rrLaunch($('rrShuffle'), null, () => rrPlayAll(true));
   $('rrSearchBtn').onclick = () => {
     const row = $('rrSearchRow'), show = row.hidden; row.hidden = !show; $('rrSearchBtn').setAttribute('aria-expanded', show);
     if (show) $('rrSearch').focus(); else { $('rrSearch').value = ''; RR.q = ''; rrRender(true); }
@@ -1195,7 +1230,7 @@ function bindRoom() {
   $('rrSearch').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); if ($('rrSearch').value) { $('rrSearch').value = ''; RR.q = ''; rrRender(true); } else $('rrSearchBtn').click(); } });
   $('rrBody').addEventListener('scroll', () => { const b = $('rrBody'); if (b.scrollTop + b.clientHeight > b.scrollHeight - 420) rrMore(); }, { passive: true });
   $('rrDBack').onclick = () => { rrDetailClose(); };
-  $('rrDPlay').onclick = () => { if (RR.detail) rrPlay(RR.detail); };
+  $('rrDPlay').onclick = () => { const t = RR.detail; if (t) rrLaunch($('rrDArt'), t.id, () => rrPlay(t)); };
   $('rrNowBtn').onclick = () => control(S.isPlaying ? 'pause' : 'play');
   document.addEventListener('keydown', (e) => {            // keep focus inside the drawer while it is open
     if (e.key !== 'Tab' || !RR.open || !$('devicesModal').hidden) return;
