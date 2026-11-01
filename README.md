@@ -59,7 +59,14 @@ Local test instead: `python3 -m http.server 8080 --bind 127.0.0.1`, then open `h
 
 ## Lyrics source and privacy
 
-Lyrics come from [LRCLIB](https://lrclib.net), a free community database that needs no API key (Spotify's own lyrics are not available through its public API). When lyrics are switched on, NEEDLE sends the current track's title, artist, album and length to lrclib.net, directly from the browser. Nothing is sent while lyrics are off. Results are cached per track for the session. Coverage depends on the community database, so obscure tracks may have none, and timing can occasionally be a little off for a different edit of a song. `?demo` mode uses invented lyrics.
+There is no single free lyrics service that is perfectly reliable, and Spotify's own lyrics are not available through its public API. So NEEDLE uses the best open source and defends against its weak spots:
+
+1. **LRCLIB** ([lrclib.net](https://lrclib.net), free, no key, time-synced) is the main source. NEEDLE asks for an exact match, then widens to a search (title with "Remastered / Live / feat." stripped, all artists tried), and **rejects results whose length differs by more than 10 s** so you never get timings from the wrong edit. Failed requests are retried automatically.
+2. If LRCLIB has nothing, **lyrics.ovh** is tried for plain (unsynced) text.
+3. If both fail you get an honest message with **Try again** (network trouble) or **Search manually** (no match). The manual picker searches LRCLIB, shows length and whether each result is synced, and your choice is remembered.
+4. **Change lyrics** (top of the lyrics view) reopens that picker for any track.
+
+Results, including your manual picks, are saved in this browser (last 80 tracks), so replays need no network. Privacy: with lyrics on, the track's title, artist, album and length go to lrclib.net, and the title and first artist also go to api.lyrics.ovh if LRCLIB finds nothing. Nothing is sent while lyrics are off. `?demo` mode uses invented lyrics.
 
 ## Known limits
 
@@ -67,7 +74,7 @@ Lyrics come from [LRCLIB](https://lrclib.net), a free community database that ne
 - Tokens live in this browser's `localStorage` (normal for a static PKCE app). "Disconnect" clears them.
 - If your Premium lapses, Development Mode apps stop working.
 - Cover-art colour sampling needs Spotify's image CDN to allow CORS; if a cover can't be sampled the background falls back to the default bronze palette.
-- Lyrics were tested against a mocked LRCLIB response, not the live service.
+- Lyrics logic was tested against mocked LRCLIB / lyrics.ovh responses, not the live services (lyrics.ovh availability and browser access are unverified).
 - Not tested against a real Spotify account or on a physical iPad (see delivery notes).
 
 ## Files

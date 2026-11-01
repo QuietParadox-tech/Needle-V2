@@ -282,15 +282,15 @@ button.icon.on{background:rgba(240,227,199,.2)}
 }
 
 /* ---------- playlist browser ---------- */
-#libModal .card,#queueModal .card{width:min(100%,540px);max-height:min(88vh,740px);display:flex;flex-direction:column;text-align:left;padding:22px 16px 10px}
+#libModal .card,#queueModal .card,#lyPickModal .card{width:min(100%,540px);max-height:min(88vh,740px);display:flex;flex-direction:column;text-align:left;padding:22px 16px 10px}
 #libModal h2{text-align:center;margin-bottom:12px}
-#libSearch{width:100%;padding:11px 12px;border-radius:10px;border:1px solid rgba(240,227,199,.25);background:rgba(0,0,0,.35);color:var(--cream);font:inherit;font-size:15px;-webkit-user-select:text;user-select:text;-webkit-appearance:none;appearance:none}
-#libSearch::placeholder{color:rgba(240,227,199,.45)}
-#plList,#qList{list-style:none;margin:10px 0 0;padding:0;overflow-y:auto;flex:1;min-height:120px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
-#plList li button,#qList li button{width:100%;display:flex;align-items:center;gap:12px;padding:8px;border:0;border-radius:12px;background:transparent;cursor:pointer;text-align:left}
-#plList li button:active,#qList li button:active{background:rgba(240,227,199,.12)}
-#plList .empty,#qList .empty{opacity:.75;font-size:14px;line-height:1.45;padding:14px 6px;text-align:center}
-#plList .empty .mini,#qList .empty .mini{margin-top:10px}
+#libSearch,#lyPickQ{width:100%;padding:11px 12px;border-radius:10px;border:1px solid rgba(240,227,199,.25);background:rgba(0,0,0,.35);color:var(--cream);font:inherit;font-size:15px;-webkit-user-select:text;user-select:text;-webkit-appearance:none;appearance:none}
+#libSearch::placeholder,#lyPickQ::placeholder{color:rgba(240,227,199,.45)}
+#plList,#qList,#lyPickList{list-style:none;margin:10px 0 0;padding:0;overflow-y:auto;flex:1;min-height:120px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+#plList li button,#qList li button,#lyPickList li button{width:100%;display:flex;align-items:center;gap:12px;padding:8px;border:0;border-radius:12px;background:transparent;cursor:pointer;text-align:left}
+#plList li button:active,#qList li button:active,#lyPickList li button:active{background:rgba(240,227,199,.12)}
+#plList .empty,#qList .empty,#lyPickList .empty{opacity:.75;font-size:14px;line-height:1.45;padding:14px 6px;text-align:center}
+#plList .empty .mini,#qList .empty .mini,#lyPickList .empty .mini{margin-top:10px}
 .pl-img{width:54px;height:54px;flex:none;border-radius:6px;object-fit:cover;background:linear-gradient(135deg,#6b4a30,#2a1b12);box-shadow:0 2px 8px rgba(0,0,0,.35)}
 .pl-img.liked{display:grid;place-items:center;background:linear-gradient(135deg,#d9bb74,#7a5f2a);color:#2a1a10}
 .pl-img.liked svg{width:24px;height:24px;fill:currentColor}
@@ -351,7 +351,7 @@ button.icon.on{background:rgba(240,227,199,.2)}
 .pl-actions button{flex:1;display:flex;justify-content:center;padding:11px 8px!important;border-radius:999px!important;border:1px solid rgba(240,227,199,.3)!important;font-weight:600;font-size:14px}
 .pl-actions button.primary{background:var(--cream)!important;color:#2a1a10;border-color:var(--cream)!important}
 .tr-img{width:44px;height:44px;flex:none;border-radius:5px;object-fit:cover;background:linear-gradient(135deg,#6b4a30,#2a1b12)}
-#plList li.now .pl-name,#qList li.now .pl-name{color:#e8c874}
+#plList li.now .pl-name,#qList li.now .pl-name,#lyPickList li.now .pl-name{color:#e8c874}
 .pl-dur{margin-left:auto;flex:none;font-size:12px;opacity:.55;font-variant-numeric:tabular-nums}
 #record{touch-action:none;cursor:grab;-webkit-touch-callout:none}
 #tonearm{touch-action:none;cursor:grab}
@@ -387,3 +387,13 @@ body.scrubbing #record{cursor:grabbing}
 }
 .ly-now.show{opacity:1;pointer-events:auto;transform:translate(-50%,0)}
 @media (orientation:landscape){ .ly-now{left:35%} }
+
+/* lyrics status buttons + "Change lyrics" */
+.ly-status{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3cqw}
+.ly-status .ly-act,.ly-fix{
+  pointer-events:auto;cursor:pointer;color:var(--cream);font:inherit;font-weight:600;letter-spacing:.04em;
+  border:1px solid rgba(240,227,199,.4);border-radius:999px;background:rgba(24,14,8,.6);
+}
+.ly-status .ly-act{padding:2cqw 5cqw;font-size:max(12px,4cqw)}
+.ly-fix{position:absolute;top:2.2cqw;right:6cqw;z-index:2;padding:1.2cqw 3.2cqw;font-size:max(10px,2.9cqw);opacity:.75}
+@media (orientation:landscape){ .ly-fix{right:32cqw} }

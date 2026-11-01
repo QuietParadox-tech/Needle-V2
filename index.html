@@ -35,6 +35,7 @@
       <div class="ly-scroll" id="lyScroll"><div class="ly-lines" id="lyLines"></div></div>
       <div class="ly-status" id="lyStatus"></div>
       <div class="ly-credit" id="lyCredit"></div>
+      <button class="ly-fix" id="lyFix" type="button" title="Wrong or missing lyrics? Pick another version">Change lyrics</button>
       <button class="ly-now" id="lyNow" type="button">↧ Back to current line</button>
     </div>
     <div class="sleeve-gloss"></div>
@@ -150,6 +151,15 @@
     <div class="lib-head"><h2>Up next</h2></div>
     <ul id="qList"></ul>
     <button class="linkish" id="btnQueueClose">Close</button>
+  </div>
+</section>
+
+<section id="lyPickModal" class="modal" hidden>
+  <div class="card">
+    <div class="lib-head"><h2>Find lyrics</h2></div>
+    <input id="lyPickQ" type="search" placeholder="Song title and artist" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Search lyrics">
+    <ul id="lyPickList"></ul>
+    <button class="linkish" id="btnLyPickClose">Close</button>
   </div>
 </section>
 

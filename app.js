@@ -209,6 +209,7 @@ function normalize(it) {
     album: ep ? ((it.show && it.show.publisher) || '') : ((it.album && it.album.name) || ''),
     art, duration: it.duration_ms || 0,
     artist1: ep ? '' : ((it.artists && it.artists[0] && it.artists[0].name) || ''),
+    allArtists: ep ? [] : (it.artists || []).map((x) => x.name).filter(Boolean),
     episode: ep,
   };
 }
@@ -419,23 +420,38 @@ function parseLrc(txt) {
 }
 function cleanTitle(s) {
   const c = String(s || '')
-    .replace(/\s*[(\[][^)\]]*(feat|ft\.|with |remaster|live|version|edit|mono|stereo)[^)\]]*[)\]]/ig, '')
-    .replace(/\s+-\s+.*(remaster|version|edit|mono|stereo|live|single).*$/i, '').trim();
+    .replace(/\s*[(\[][^)\]]*(feat|ft\.|with |remaster|live|version|edit|mono|stereo|from |soundtrack|bonus|deluxe|acoustic|radio)[^)\]]*[)\]]/ig, '')
+    .replace(/\s+-\s+.*(remaster|version|edit|mono|stereo|live|single|from |soundtrack|radio).*$/i, '').trim();
   return c || s;
 }
-async function lrc(path, params) {
+const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/&/g, ' and ').replace(/[^a-z0-9\u0080-￿]+/g, ' ').trim();
+async function lrc(path, params, tries = 2) {                 // one LRCLIB request, retried on network errors / 429 / 5xx
   const url = new URL(LRC_API + path);
   for (const [k, v] of Object.entries(params)) if (v) url.searchParams.set(k, v);
-  const res = await fetch(url.toString(), { signal: AbortSignal.timeout ? AbortSignal.timeout(9000) : undefined });
-  if (res.status === 404 || res.status === 400) return null;
-  if (!res.ok) throw new Error('lrclib ' + res.status);
-  return res.json();
+  for (let i = 0; ; i++) {
+    try {
+      const res = await fetch(url.toString(), { signal: AbortSignal.timeout ? AbortSignal.timeout(10000) : undefined });
+      if (res.status === 404 || res.status === 400) return null;
+      if (!res.ok) throw new Error('lrclib ' + res.status);
+      return await res.json();
+    } catch (e) { if (i >= tries - 1) throw e; await sleep(700 * (i + 1)); }
+  }
 }
-function pickBest(list, secs) {
-  if (!Array.isArray(list)) return null;
-  const ok = list.filter((r) => r && (r.instrumental || r.syncedLyrics || r.plainLyrics) && (!secs || !r.duration || Math.abs(r.duration - secs) <= 6));
-  ok.sort((a, b) => ((a.syncedLyrics ? 0 : 1) - (b.syncedLyrics ? 0 : 1)) || (Math.abs((a.duration || 0) - secs) - Math.abs((b.duration || 0) - secs)));
-  return ok[0] || null;
+// How well does a LRCLIB record match the Spotify track? Returns -Infinity when it is clearly a different song/edit.
+function lyScore(r, t, secs) {
+  if (!r || !(r.instrumental || r.syncedLyrics || r.plainLyrics)) return -Infinity;
+  const dd = secs && r.duration ? Math.abs(r.duration - secs) : 0;
+  if (dd > 10) return -Infinity;                              // a different edit of the song: timings would be wrong
+  const rt = norm(cleanTitle(r.trackName || r.name)), tt = norm(cleanTitle(t.title));
+  const titleOk = rt === tt ? 2 : (rt && tt && (rt.includes(tt) || tt.includes(rt))) ? 1 : 0;
+  const ra = norm(r.artistName), arts = (t.allArtists && t.allArtists.length ? t.allArtists : [t.artist1]).map(norm).filter(Boolean);
+  const artistOk = !arts.length || arts.some((x) => ra.includes(x) || x.includes(ra));
+  if (!titleOk || !artistOk) return -Infinity;
+  return (r.syncedLyrics ? 100 : r.instrumental ? 60 : 40) - dd * 6 + titleOk * 20;
+}
+function pickBest(list, t, secs) {
+  const ranked = (list || []).map((r) => [lyScore(r, t, secs), r]).filter((x) => x[0] > -Infinity).sort((a, b) => b[0] - a[0]);
+  return ranked.length ? ranked[0][1] : null;
 }
 function lyResult(rec) {
   if (!rec) return { none: true };
@@ -445,22 +461,63 @@ function lyResult(rec) {
   if (rec.plainLyrics && rec.plainLyrics.trim()) return { plain: rec.plainLyrics };
   return { none: true };
 }
+async function fetchOvh(t) {                                  // last-resort plain-text source (not synced)
+  if (!t.artist1) return null;
+  try {
+    const res = await fetch('https://api.lyrics.ovh/v1/' + encodeURIComponent(t.artist1) + '/' + encodeURIComponent(cleanTitle(t.title)), { signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined });
+    if (!res.ok) return null;
+    const j = await res.json(), txt = (j && j.lyrics || '').replace(/^Paroles de la chanson[^\n]*\n+/i, '').trim();
+    return txt.length > 40 ? txt : null;
+  } catch { return null; }
+}
 async function fetchLyrics(t) {
   if (t.lrc) return { synced: t.lrc, demo: true };
   if (t.episode) return { none: true, podcast: true };
-  const secs = Math.round(t.duration / 1000);
-  let rec = await lrc('/get', { track_name: t.title, artist_name: t.artist1, album_name: t.album, duration: secs });
-  if (!rec) {
-    const ct = cleanTitle(t.title);
-    let list = await lrc('/search', { track_name: ct, artist_name: t.artist1 });
-    if (!Array.isArray(list) || !list.length) list = await lrc('/search', { q: (ct + ' ' + t.artist1).trim() });
-    rec = pickBest(list, secs);
+  const secs = Math.round(t.duration / 1000), ct = cleanTitle(t.title), a1 = t.artist1;
+  let failed = 0, total = 0;
+  const run = async (path, params) => { total++; try { return await lrc(path, params); } catch { failed++; return null; } };
+  // 1. exact lookups (fast path)
+  const exact = await Promise.all([
+    run('/get', { track_name: t.title, artist_name: a1, album_name: t.album, duration: secs }),
+    run('/get', { track_name: ct, artist_name: a1, duration: secs }),
+  ]);
+  const hit = exact.find((r) => r && lyScore(r, t, secs) > -Infinity && (r.syncedLyrics || r.instrumental));
+  if (hit) return lyResult(hit);
+  // 2. searches, widening step by step; stop as soon as a synced match turns up
+  const pool = exact.filter(Boolean);
+  const batches = [
+    [{ track_name: ct, artist_name: a1 }, { q: (ct + ' ' + a1).trim() }, { track_name: t.title, artist_name: a1 }],
+    [...(t.allArtists || []).slice(1, 3).map((x) => ({ track_name: ct, artist_name: x })), { q: ct }, { q: (norm(ct) + ' ' + norm(a1)).trim() }],
+  ];
+  for (const batch of batches) {
+    const lists = await Promise.all(batch.map((q) => run('/search', q)));
+    for (const l of lists) if (Array.isArray(l)) pool.push(...l);
+    const best = pickBest(pool, t, secs);
+    if (best && (best.syncedLyrics || best.instrumental)) return lyResult(best);
   }
-  return lyResult(rec);
+  const best = pickBest(pool, t, secs);
+  if (best) return lyResult(best);                            // plain (unsynced) lyrics from LRCLIB
+  if (total && failed === total) throw new Error('lyrics service unreachable');
+  const ovh = await fetchOvh(t);
+  if (ovh) return { plain: ovh, ovh: true };
+  return { none: true };
 }
 
-function lyStatus(msg, loading) {
+/* lyrics are remembered on this device, so repeat plays are instant, work offline and never re-ask the network */
+const LY_CACHE_KEY = 'needle.lycache', LY_CACHE_MAX = 80;
+function lyCacheLoad() { try { return JSON.parse(store.get(LY_CACHE_KEY) || '{}'); } catch { return {}; } }
+function lyCacheGet(id) { const e = lyCacheLoad()[id]; return e ? e.res : null; }
+function lyCachePut(id, res) {
+  if (!res || res.none || res.demo) return;
+  const c = lyCacheLoad(); c[id] = { t: Date.now(), res };
+  const ids = Object.keys(c).sort((x, y) => c[y].t - c[x].t);
+  for (const old of ids.slice(LY_CACHE_MAX)) delete c[old];
+  try { store.set(LY_CACHE_KEY, JSON.stringify(c)); } catch { /* storage full: skip */ }
+}
+
+function lyStatus(msg, loading, actionLabel, actionFn) {
   const el = $('lyStatus'); el.textContent = msg || '';
+  if (msg && actionLabel) { const b = document.createElement('button'); b.type = 'button'; b.className = 'ly-act'; b.textContent = actionLabel; b.onclick = actionFn; el.appendChild(b); }
   el.classList.toggle('show', !!msg); el.classList.toggle('loading', !!loading);
 }
 function lyClear() {
@@ -473,7 +530,7 @@ function lyClear() {
 function lyShow(res) {
   lyClear();
   if (res.instrumental) return lyStatus('Instrumental ♪');
-  if (res.none) return lyStatus(res.podcast ? 'No lyrics for podcasts' : 'No lyrics found for this track');
+  if (res.none) return res.podcast ? lyStatus('No lyrics for podcasts') : lyStatus('No lyrics found for this track', false, 'Search manually', openLyPick);
   const box = $('lyLines'), frag = document.createDocumentFragment();
   if (res.synced) {
     res.synced.forEach((ln, i) => {
@@ -495,24 +552,60 @@ function lyShow(res) {
     }
     box.appendChild(frag);
   }
-  $('lyCredit').textContent = res.demo ? 'Demo lyrics · invented' : (res.synced ? 'LRCLIB' : 'LRCLIB · not synced');
+  $('lyCredit').textContent = res.demo ? 'Demo lyrics · invented' : res.ovh ? 'lyrics.ovh · not synced' : (res.synced ? 'LRCLIB' : 'LRCLIB · not synced');
 }
 async function lyLoad(t) {
   const my = ++lySeq;
   LY.id = t.id; lyClear();
-  const cached = lyCache.get(t.id);
-  if (cached) return lyShow(cached);
+  const cached = lyCache.get(t.id) || lyCacheGet(t.id);
+  if (cached) { lyCache.set(t.id, cached); return lyShow(cached); }
   lyStatus('Finding lyrics…', true);
   try {
     const res = await fetchLyrics(t);
     if (my !== lySeq) return;
-    lyCache.set(t.id, res); lyShow(res);
+    lyCache.set(t.id, res); lyCachePut(t.id, res); lyShow(res);
   } catch {
     if (my !== lySeq) return;
-    LY.id = null;                              // allow a retry by toggling lyrics
-    lyStatus('Couldn’t load lyrics. Toggle lyrics off and on to retry.');
+    LY.id = null;                                                          // allow a retry
+    lyStatus('Couldn’t reach the lyrics service.', false, 'Try again', () => { if (S.track) lyLoad(S.track); });
   }
 }
+/* "Wrong or missing lyrics?" - search LRCLIB by hand and choose the version that fits */
+let lyPickT = 0;
+function openLyPick() {
+  if (!S.track) return;
+  $('lyPickModal').hidden = false;
+  $('lyPickQ').value = (cleanTitle(S.track.title) + ' ' + S.track.artist1).trim();
+  runLyPick();
+}
+function closeLyPick() { $('lyPickModal').hidden = true; }
+async function runLyPick() {
+  const q = $('lyPickQ').value.trim(), list = $('lyPickList'), my = ++lyPickT;
+  const msg = (t) => { list.innerHTML = ''; const li = document.createElement('li'); li.className = 'empty'; li.textContent = t; list.appendChild(li); };
+  if (q.length < 2) return msg('Type a song title and artist.');
+  msg('Searching…');
+  let res;
+  try { res = await lrc('/search', { q }); } catch { if (my === lyPickT) msg('Couldn’t reach the lyrics service. Check your connection.'); return; }
+  if (my !== lyPickT) return;
+  const rows = (Array.isArray(res) ? res : []).filter((r) => r && (r.syncedLyrics || r.plainLyrics || r.instrumental)).slice(0, 25);
+  if (!rows.length) return msg('Nothing found. Try fewer words, or just the song title.');
+  list.innerHTML = '';
+  const secs = S.track ? Math.round(S.track.duration / 1000) : 0;
+  for (const r of rows) {
+    const li = document.createElement('li'), b = document.createElement('button'), meta = document.createElement('span');
+    meta.className = 'pl-meta';
+    const n = document.createElement('span'); n.className = 'pl-name'; n.textContent = r.trackName || r.name || 'Unknown';
+    const s = document.createElement('span'); s.className = 'pl-sub';
+    s.textContent = [r.artistName, r.albumName, r.instrumental ? 'instrumental' : r.syncedLyrics ? 'synced' : 'not synced'].filter(Boolean).join(' · ');
+    meta.append(n, s);
+    const d = document.createElement('span'); d.className = 'pl-dur';
+    d.textContent = r.duration ? mmss(r.duration * 1000) + (secs && Math.abs(r.duration - secs) > 3 ? ' ≠' : '') : '';
+    b.append(meta, d);
+    b.onclick = () => { const out = lyResult(r); if (S.track) { lyCache.set(S.track.id, out); lyCachePut(S.track.id, out); } closeLyPick(); lyShow(out); toast('Lyrics changed'); };
+    li.appendChild(b); list.appendChild(li);
+  }
+}
+
 function lyOnTrack(t) {                        // called when a new record's label is swapped in
   S.track = t; LY.id = null; lySeq++; lyClear();
   if (S.lyricsOn) lyLoad(t);
@@ -1257,6 +1350,9 @@ function bind() {
   for (const ev of ['wheel', 'touchstart', 'pointerdown']) lyScroll.addEventListener(ev, lyUser, { passive: true });
   lyScroll.addEventListener('scroll', () => { if (LY.manual) { clearTimeout(LY.mt); LY.mt = setTimeout(lyFollow, 5000); } }, { passive: true });
   $('lyNow').onclick = lyFollow;
+  $('lyFix').onclick = openLyPick;
+  $('btnLyPickClose').onclick = closeLyPick;
+  let lyQT = 0; $('lyPickQ').addEventListener('input', () => { clearTimeout(lyQT); lyQT = setTimeout(runLyPick, 400); });
   setInterval(() => { if (!document.hidden) lyTick(false); }, 200);
   $('btnDevicesClose').onclick = () => { $('devicesModal').hidden = true; PL.ctx = null; };
   $('btnLibrary').onclick = openLibrary;
@@ -1299,7 +1395,7 @@ function bind() {
     if (e.target && e.target.tagName === 'INPUT') return;
     if (e.code === 'Space') { e.preventDefault(); control(S.isPlaying ? 'pause' : 'play'); }
     else if (e.key === 'q' || e.key === 'Q') openQueue();
-    else if (e.key === 'Escape') { closeQueue(); $('libModal').hidden = true; $('devicesModal').hidden = true; PL.ctx = null; }
+    else if (e.key === 'Escape') { closeLyPick(); closeQueue(); $('libModal').hidden = true; $('devicesModal').hidden = true; PL.ctx = null; }
     else if (e.key === 'p' || e.key === 'P') openLibrary();
     else if (e.key === 's' || e.key === 'S') setSfx(!SFX.on);
     else if (e.key === 'ArrowRight') control('next');
