@@ -12,7 +12,7 @@ const NEED_SCOPES = ['user-read-playback-state', 'user-modify-playback-state', '
 const SCOPES = NEED_SCOPES.join(' ');
 const API = 'https://api.spotify.com/v1';
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
-const K = { tokens: 'needle.tokens', verifier: 'needle.verifier', state: 'needle.state', cid: 'needle.clientId', ambient: 'needle.ambient', lyrics: 'needle.lyrics', local: 'needle.local', sfx: 'needle.sfx' };
+const K = { tokens: 'needle.tokens', verifier: 'needle.verifier', state: 'needle.state', cid: 'needle.clientId', ambient: 'needle.ambient', lyrics: 'needle.lyrics', local: 'needle.local', sfx: 'needle.sfx', roomTheme: 'needle.roomTheme' };
 
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -217,6 +217,7 @@ function applyPlayer(p) {
   if (!p.item) return setIdle();
   const t = normalize(p.item);
   S.device = p.device || null;
+  S.ctxUri = (p.context && p.context.uri) || null;
   if (MUTE.on && p.is_playing && !MUTE.retried) { MUTE.retried = true; musicPause().catch(() => {}); }   // pause didn't land yet: ask again
   S.isPlaying = MUTE.on ? true : !!p.is_playing;   // don't flicker to "paused" while the song is hushed for scrubbing
   if (S.isPlaying) S.expectAt = 0;
@@ -230,7 +231,7 @@ function setIdle() {
   S.isPlaying = false; S.syncedAt = performance.now();
   renderPlaying();
   showNotice(LOCAL.id ? 'Nothing is playing. Pick a playlist or song and it will play right here in NEEDLE.' : 'Nothing is playing. Open Spotify on a device and press play, or pick a device to play on.', [
-    { label: 'Your playlists', fn: openLibrary },
+    { label: 'Record Room', fn: rrOpen },
     { label: 'Choose device', fn: openDevices },
   ]);
   if (!S.trackId) { setLabel({ title: 'NEEDLE', artists: 'Nothing playing', album: '' }); setBackground(null); }
@@ -248,7 +249,7 @@ function renderPlaying() {
   document.body.classList.toggle('playing', S.isPlaying);
   $('deviceCap').textContent = MUTE.on ? 'Scrubbing · song paused' : S.demo ? 'DEMO MODE · not connected to Spotify'
     : S.device ? 'On ' + S.device.name : '';
-  renderArm(); tick(true); updateWakeLock();
+  renderArm(); tick(true); updateWakeLock(); rrSync();
 }
 const fmt = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 let tickN = 0;
@@ -378,12 +379,13 @@ function setBackground(p) {
 async function changeTrack(t) {
   const first = !S.trackId, my = ++S.seq;
   S.trackId = t.id;
+  rrOnTrack();
   let loaded = null;
   if (t.art) { try { loaded = await loadImage(t.art); } catch { loaded = null; } }
   if (my !== S.seq) return;
   const stage = $('stage');
   if (!first) { stage.classList.add('changing'); S.lifted = true; renderArm(); await sleep(550); if (my !== S.seq) return; }
-  setLabel(t);
+  setLabel(t); rrSync();
   lyOnTrack(t);
   if (Q.open) loadQueue();
   setSleeve(loaded ? t.art : null, loaded ? loaded.cors : false);
@@ -684,7 +686,7 @@ async function control(kind) {
       if (t.ok) { hideNotice(); setTimeout(poll, 800); return true; }
     }
     toast(explain(r), true);
-    if (r.status === 404) showNotice(explain(r), [{ label: 'Your playlists', fn: openLibrary }, { label: 'Choose device', fn: openDevices }]);
+    if (r.status === 404) showNotice(explain(r), [{ label: 'Record Room', fn: rrOpen }, { label: 'Choose device', fn: openDevices }]);
   } catch (e) {
     if (e instanceof AuthError) showGate({ error: e.message }); else toast('Could not reach Spotify.', true);
   }
@@ -700,8 +702,8 @@ async function seek(ms) {
   } catch { toast('Could not reach Spotify.', true); }
 }
 
-/* ---------- library: browse your playlists and start one ---------- */
-const PL = { list: null, at: 0, ctx: null, view: 'list', src: null, tracks: [], offset: 0, more: false, loading: false, seq: 0 };
+/* ---------- playlists list (used by the Record Room) ---------- */
+const WAIT = { ctx: null };                              // a play request waiting for the person to pick a device
 async function fetchPlaylists() {
   const out = [];
   for (let i = 0; i < 10; i++) {                       // up to 500 playlists
@@ -712,56 +714,6 @@ async function fetchPlaylists() {
     if (!r.data.next || !items.length) break;
   }
   return { items: out };
-}
-function libMsg(text, reconnect) {
-  const list = $('plList'); list.innerHTML = '';
-  const li = document.createElement('li'); li.className = 'empty'; li.textContent = text;
-  if (reconnect) { const b = document.createElement('button'); b.className = 'mini'; b.textContent = 'Reconnect Spotify'; b.onclick = login; li.appendChild(document.createElement('br')); li.appendChild(b); }
-  list.appendChild(li);
-}
-async function openLibrary() {
-  if (S.demo) return toast('Playlists are not available in demo mode.');
-  $('libModal').hidden = false; $('libSearch').value = '';
-  showListView();
-  if (PL.list) renderPlaylists(); else libMsg('Loading your playlists…');
-  if (PL.list && Date.now() - PL.at < 60000) return;
-  try {
-    const r = await fetchPlaylists();
-    if (r.error) {
-      const forbidden = r.error.status === 403 || r.error.status === 401;
-      if (!PL.list) libMsg(forbidden ? 'NEEDLE needs permission to read your playlists. Reconnect Spotify once to allow it.' : explain(r.error), forbidden);
-      return;
-    }
-    PL.list = r.items; PL.at = Date.now(); renderPlaylists();
-  } catch (e) {
-    if (e instanceof AuthError) { $('libModal').hidden = true; showGate({ error: e.message }); }
-    else if (!PL.list) libMsg('Could not load playlists. Check your connection and try again.');
-  }
-}
-function renderPlaylists() {
-  const q = $('libSearch').value.trim().toLowerCase(), list = $('plList'); list.innerHTML = '';
-  const add = (img, name, sub, fn) => {
-    const li = document.createElement('li'), b = document.createElement('button'), meta = document.createElement('span');
-    meta.className = 'pl-meta';
-    const n = document.createElement('span'); n.className = 'pl-name'; n.textContent = name;
-    const s = document.createElement('span'); s.className = 'pl-sub'; s.textContent = sub;
-    meta.append(n, s); b.append(img, meta); b.onclick = fn; li.appendChild(b); list.appendChild(li);
-  };
-  if (!q || 'liked songs'.includes(q)) {
-    const d = document.createElement('span'); d.className = 'pl-img liked';
-    d.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.2C1 8.6 2.9 5 6.3 5c2 0 3.5 1.1 4.2 2.4h3C14.2 6.1 15.7 5 17.7 5c3.4 0 5.3 3.6 3.9 6.8C19.5 16.4 12 21 12 21z"/></svg>';
-    add(d, 'Liked Songs', 'Your saved tracks', () => openTracks({ kind: 'liked', name: 'Liked Songs' }));
-  }
-  const items = (PL.list || []).filter((p) => !q || (p.name || '').toLowerCase().includes(q) || ((p.owner && p.owner.display_name) || '').toLowerCase().includes(q));
-  for (const p of items) {
-    const img = document.createElement('img'); img.className = 'pl-img'; img.alt = ''; img.loading = 'lazy'; img.decoding = 'async';
-    const u = p.images && p.images.length ? (p.images[p.images.length - 1].url) : null;
-    if (u) img.src = u;
-    const total = (p.items && p.items.total) ?? (p.tracks && p.tracks.total);
-    const parts = []; if (typeof total === 'number') parts.push(total + ' tracks'); if (p.owner && p.owner.display_name) parts.push('by ' + p.owner.display_name);
-    add(img, p.name || 'Untitled playlist', parts.join(' · '), () => openTracks({ kind: 'playlist', id: p.id, uri: p.uri, name: p.name || 'Playlist' }));
-  }
-  if (!list.children.length) libMsg(q ? 'No playlists match “' + q + '”.' : 'No playlists found.');
 }
 /* ---------- up next: the current queue ---------- */
 const Q = { open: false, now: null, items: [], err: null, loading: false };
@@ -820,113 +772,436 @@ async function skipTo(i) {                                  // Spotify has no "j
   setTimeout(poll, 500);
 }
 
-function showListView() {
-  PL.view = 'list'; PL.seq++; PL.src = null;
-  $('libTitle').textContent = 'Your playlists'; $('btnLibBack').hidden = true;
-  $('libSearch').placeholder = 'Search your library'; $('plList').scrollTop = 0;
-}
 const mmss = (ms) => { const s = Math.round(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
-function normTrack(it) {
-  const t = it && (it.item || it.track || it);
-  if (!t || !t.uri || it.is_local || t.is_local) return null;
-  const imgs = (t.album && t.album.images) || t.images || [];
-  return {
-    uri: t.uri, id: t.id || t.uri.split(':').pop(), name: t.name || 'Unknown',
-    artists: t.type === 'episode' ? ((t.show && t.show.name) || '') : (t.artists || []).map((x) => x.name).join(', '),
-    img: imgs.length ? imgs[imgs.length - 1].url : null, dur: t.duration_ms || 0,
-  };
-}
-async function openTracks(src) {
-  PL.view = 'tracks'; PL.src = src; PL.tracks = []; PL.offset = 0; PL.more = false; PL.error = null; const my = ++PL.seq;
-  $('libTitle').textContent = src.name; $('btnLibBack').hidden = false;
-  $('libSearch').value = ''; $('libSearch').placeholder = 'Search in ' + src.name; $('plList').scrollTop = 0;
-  libMsg('Loading songs…');
-  await loadTracks(my);
-}
-async function loadTracks(my) {
-  if (PL.loading) return;
-  const src = PL.src; if (!src) return;
-  PL.loading = true;
-  try {
-    let r;
-    if (src.kind === 'liked') r = await api('GET', '/me/tracks', { query: { limit: 50, offset: PL.offset } });
-    else {
-      r = await api('GET', '/playlists/' + src.id + '/items', { query: { limit: 50, offset: PL.offset, additional_types: 'track' } });
-      if (!r.ok && (r.status === 404 || r.status === 400)) r = await api('GET', '/playlists/' + src.id + '/tracks', { query: { limit: 50, offset: PL.offset } });
-    }
-    if (my !== PL.seq) return;
-    if (!r.ok) {
-      PL.error = { status: r.status, text: (r.status === 403 && src.kind !== 'liked')
-        ? 'Spotify doesn’t let NEEDLE read the songs of this playlist (this can happen with playlists you don’t own). You can still play the whole playlist.'
-        : r.status === 403 ? 'NEEDLE needs permission to read your saved songs. Reconnect Spotify once to allow it.' : explain(r) };
-      PL.more = false;
-    } else {
-      const items = (r.data && r.data.items) || [];
-      PL.tracks.push(...items.map(normTrack).filter(Boolean));
-      PL.offset += items.length; PL.more = !!(r.data && r.data.next) && items.length > 0;
-    }
-    renderTracks();
-  } catch (e) {
-    if (my !== PL.seq) return;
-    if (e instanceof AuthError) { $('libModal').hidden = true; showGate({ error: e.message }); }
-    else { PL.error = { text: 'Could not load songs. Check your connection and try again.' }; renderTracks(); }
-  } finally { PL.loading = false; }
-}
-async function loadAllTracks() {                         // so search covers the whole playlist
-  const my = PL.seq;
-  for (let i = 0; i < 20 && PL.more && my === PL.seq; i++) { await loadTracks(my); await sleep(0); }
-}
-function renderTracks() {
-  const src = PL.src, q = $('libSearch').value.trim().toLowerCase(), list = $('plList'), keep = list.scrollTop;
-  list.innerHTML = '';
-  const bar = document.createElement('li'); bar.className = 'pl-actions';
-  const mkBtn = (label, cls, fn) => { const b = document.createElement('button'); b.textContent = label; if (cls) b.className = cls; b.onclick = fn; bar.appendChild(b); };
-  if (src.kind === 'playlist') {
-    mkBtn('▶  Play all', 'primary', () => playBody({ context_uri: src.uri }, src.name));
-    mkBtn('⤮  Shuffle', '', () => playBody({ context_uri: src.uri }, src.name, null, true));
-  } else if (PL.tracks.length) {
-    const uris = () => PL.tracks.slice(0, 100).map((t) => t.uri);
-    mkBtn('▶  Play all', 'primary', () => playBody({ uris: uris() }, src.name));
-    mkBtn('⤮  Shuffle', '', () => playBody({ uris: uris() }, src.name, null, true));
-  }
-  if (bar.children.length) list.appendChild(bar);
-  const shown = PL.tracks.filter((t) => !q || t.name.toLowerCase().includes(q) || t.artists.toLowerCase().includes(q));
-  for (const t of shown) {
-    const li = document.createElement('li'); if (t.id === S.trackId) li.className = 'now';
-    const b = document.createElement('button'), meta = document.createElement('span'), img = document.createElement('img');
-    img.className = 'tr-img'; img.alt = ''; img.loading = 'lazy'; img.decoding = 'async'; if (t.img) img.src = t.img;
-    meta.className = 'pl-meta';
-    const n = document.createElement('span'); n.className = 'pl-name'; n.textContent = t.name;
-    const s = document.createElement('span'); s.className = 'pl-sub'; s.textContent = t.artists;
-    meta.append(n, s);
-    const d = document.createElement('span'); d.className = 'pl-dur'; d.textContent = t.dur ? mmss(t.dur) : '';
-    b.append(img, meta, d); b.onclick = () => playTrack(t); li.appendChild(b); list.appendChild(li);
-  }
-  if (PL.error) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = PL.error.text;
-    if (PL.error.status === 403 && src.kind === 'liked') { const b = document.createElement('button'); b.className = 'mini'; b.textContent = 'Reconnect Spotify'; b.onclick = login; li.append(document.createElement('br'), b); }
-    list.appendChild(li); }
-  else if (!shown.length && !PL.more) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = q ? 'No songs match “' + q + '”.' : 'This playlist has no songs yet.'; list.appendChild(li); }
-  else if (PL.more) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'Loading more…'; list.appendChild(li); }
-  list.scrollTop = keep;
-}
-function playTrack(t) {
-  const src = PL.src;
-  if (src.kind === 'playlist') return playBody({ context_uri: src.uri, offset: { uri: t.uri } }, t.name);
-  const i = PL.tracks.indexOf(t), from = Math.max(0, Math.min(i, PL.tracks.length - 100));   // Spotify takes up to 100 URIs
-  return playBody({ uris: PL.tracks.slice(from, from + 100).map((x) => x.uri), offset: { uri: t.uri } }, t.name);
-}
 async function playBody(body, name, deviceId, shuffle) {
   activateLocal();
   try {
     const r = await api('PUT', '/me/player/play', { query: deviceId ? { device_id: deviceId } : undefined, body });
     if (r.ok) {
-      PL.ctx = null; $('libModal').hidden = true; $('devicesModal').hidden = true; hideNotice(); toast('Playing ' + name); expectPlaying();
+      WAIT.ctx = null; $('devicesModal').hidden = true; hideNotice(); toast('Playing ' + name); expectPlaying();
       if (shuffle) api('PUT', '/me/player/shuffle', { query: { state: 'true' } }).catch(() => {});
       setTimeout(poll, 800);
     } else if (r.status === 404 && LOCAL.id && !deviceId) { return playBody(body, name, LOCAL.id, shuffle); }   // no active device: play here
-    else if (r.status === 404) { PL.ctx = { body, name, shuffle }; $('libModal').hidden = true; toast('No active device. Pick where to play ' + name + '.', true); openDevices(); }
+    else if (r.status === 404) { WAIT.ctx = { body, name, shuffle }; toast('No active device. Pick where to play ' + name + '.', true); openDevices(); }
     else toast(explain(r), true);
   } catch (e) { if (e instanceof AuthError) showGate({ error: e.message }); else toast('Could not reach Spotify.', true); }
+}
+
+/* =====================================================================
+   Record Room — your collection as a drawer of record sleeves.
+   Uses the same Spotify login (api()), the same playback (playBody())
+   and the same player state (S) as the rest of NEEDLE.
+   ===================================================================== */
+const RR_PAGE = 72;                                       // sleeves drawn per batch while scrolling
+const RR_ALL_PLAYLISTS = 30, RR_ALL_PER_LIST = 100, RR_LIKED_CAP = 1000;
+const rrSrc = (more) => ({ items: [], offset: 0, more, loading: false, err: null });
+const RR = {
+  open: false, tab: 'all', sub: null, q: '', shown: RR_PAGE, seq: 0, at: 0, cur: null, key: '', detail: null,
+  saved: null, liked: null, recent: null, albums: null, plists: null, all: null,
+};
+function rrReset() {
+  RR.liked = rrSrc(true); RR.liked.total = null; RR.recent = rrSrc(true); RR.albums = rrSrc(true); RR.plists = rrSrc(true);
+  RR.all = { items: [], more: true, loading: false, err: null, note: '', skipped: 0, running: false };
+  RR.saved = null; RR.sub = null; RR.at = Date.now();
+}
+rrReset();
+
+/* ----- mapping Spotify objects to what the sleeves need ----- */
+function rrImg(images, want) {                            // smallest image that is still sharp enough
+  const l = (images || []).filter((i) => i && i.url).slice().sort((a, b) => (b.width || 0) - (a.width || 0));
+  if (!l.length) return null;
+  const ok = l.filter((i) => (i.width || 0) >= want);
+  return (ok.length ? ok[ok.length - 1] : l[0]).url;
+}
+function rrTrack(it) {
+  const t = it && (it.item || it.track || it);
+  if (!t || !t.uri || t.type === 'episode' || (it && it.is_local) || t.is_local) return null;
+  const al = t.album || {};
+  return {
+    kind: 'track', id: t.id || t.uri.split(':').pop(), uri: t.uri, name: t.name || 'Unknown',
+    artists: (t.artists || []).map((a) => a.name).filter(Boolean).join(', '), album: al.name || '',
+    art: rrImg(al.images, 300), big: rrImg(al.images, 640), dur: t.duration_ms || 0,
+    date: al.release_date || '', explicit: !!t.explicit, no: t.track_number || 0,
+    url: (t.external_urls && t.external_urls.spotify) || '',
+  };
+}
+function rrAlbum(a) {
+  if (!a || !a.uri) return null;
+  return { kind: 'album', id: a.id, uri: a.uri, name: a.name || 'Unknown album', artists: (a.artists || []).map((x) => x.name).join(', '),
+    art: rrImg(a.images, 300), big: rrImg(a.images, 640), total: a.total_tracks || 0, date: a.release_date || '', images: a.images || [] };
+}
+function rrPlaylist(p) {
+  if (!p || !p.uri) return null;
+  const total = (p.items && p.items.total) ?? (p.tracks && p.tracks.total);
+  return { kind: 'playlist', id: p.id, uri: p.uri, name: p.name || 'Untitled playlist', owner: (p.owner && p.owner.display_name) || '',
+    art: rrImg(p.images, 300), total: typeof total === 'number' ? total : null };
+}
+
+/* ----- fetching ----- */
+function rrErr(r, what) {
+  if (r.status === 401 || r.status === 403) {
+    const m = (r.data && r.data.error && r.data.error.message) || '';
+    if (/not registered|developer\.spotify\.com/i.test(m)) return { text: explain(r) };
+    return { text: 'Spotify did not allow NEEDLE to read ' + what + '. If you connected before the Record Room existed, reconnect once to grant the new permission.', reconnect: true };
+  }
+  return { text: explain(r) };
+}
+async function rrFetch(s, path, query, what, onData) {
+  s.loading = true; s.err = null;
+  try {
+    const r = await api('GET', path, { query });
+    if (!r.ok) { s.err = rrErr(r, what); s.more = false; return false; }
+    onData(r.data || {}); return true;
+  } catch (e) {
+    if (e instanceof AuthError) { rrClose(); showGate({ error: e.message }); }
+    else s.err = { text: 'Could not reach Spotify. Check your connection and try again.' };
+    s.more = false; return false;
+  } finally { s.loading = false; }
+}
+async function rrLoadLiked() {
+  const s = RR.liked; if (s.loading || !s.more) return;
+  await rrFetch(s, '/me/tracks', { limit: 50, offset: s.offset }, 'your saved songs', (d) => {
+    const it = d.items || [];
+    s.items.push(...it.map(rrTrack).filter(Boolean)); s.offset += it.length;
+    s.more = !!d.next && it.length > 0 && s.offset < RR_LIKED_CAP;
+    if (typeof d.total === 'number') { s.total = d.total; RR.saved = d.total; }
+  });
+  rrHead();
+}
+async function rrLoadRecent() {
+  const s = RR.recent; if (s.loading || !s.more) return;
+  await rrFetch(s, '/me/player/recently-played', { limit: 50 }, 'your listening history', (d) => {
+    const seen = new Set(); s.items = [];
+    for (const it of d.items || []) { const t = rrTrack(it); if (t && !seen.has(t.id)) { seen.add(t.id); s.items.push(t); } }
+    s.more = false;
+  });
+}
+async function rrLoadAlbums() {
+  const s = RR.albums; if (s.loading || !s.more) return;
+  await rrFetch(s, '/me/albums', { limit: 50, offset: s.offset }, 'your saved albums', (d) => {
+    const it = d.items || [];
+    s.items.push(...it.map((x) => rrAlbum(x.album || x)).filter(Boolean)); s.offset += it.length; s.more = !!d.next && it.length > 0;
+  });
+}
+async function rrLoadPlaylists() {
+  const s = RR.plists; if (s.loading || !s.more) return;
+  s.loading = true; s.err = null;
+  try {
+    const r = await fetchPlaylists();
+    if (r.error) s.err = rrErr(r.error, 'your playlists'); else s.items = r.items.map(rrPlaylist).filter(Boolean);
+    s.more = false;
+  } catch (e) {
+    if (e instanceof AuthError) { rrClose(); showGate({ error: e.message }); } else s.err = { text: 'Could not reach Spotify. Check your connection and try again.' };
+    s.more = false;
+  } finally { s.loading = false; }
+  rrHead();
+}
+async function rrPlaylistPage(id, offset) {
+  let r = await api('GET', '/playlists/' + id + '/items', { query: { limit: 50, offset, additional_types: 'track' } });
+  if (!r.ok && (r.status === 404 || r.status === 400)) r = await api('GET', '/playlists/' + id + '/tracks', { query: { limit: 50, offset } });
+  return r;
+}
+async function rrLoadSub() {
+  const s = RR.sub; if (!s || s.loading || !s.more) return; const my = s.seq;
+  s.loading = true; s.err = null;
+  try {
+    let r;
+    if (s.kind === 'album') r = await api('GET', '/albums/' + s.id + '/tracks', { query: { limit: 50, offset: s.offset } });
+    else r = await rrPlaylistPage(s.id, s.offset);
+    if (!RR.sub || RR.sub.seq !== my) return;
+    if (!r.ok) {
+      s.err = (r.status === 403 && s.kind === 'playlist')
+        ? { text: 'Spotify does not let NEEDLE read the songs of this playlist (this happens with playlists you do not own). You can still play the whole playlist.' }
+        : rrErr(r, 'these songs');
+      s.more = false;
+    } else {
+      const it = (r.data && r.data.items) || [];
+      const meta = { name: s.name, images: s.images || [], release_date: s.date || '', uri: s.uri };
+      s.items.push(...it.map((x) => rrTrack(s.kind === 'album' ? Object.assign({}, x, { album: meta }) : x)).filter(Boolean));
+      s.offset += it.length; s.more = !!(r.data && r.data.next) && it.length > 0;
+    }
+  } catch (e) {
+    if (e instanceof AuthError) { rrClose(); showGate({ error: e.message }); } else if (RR.sub && RR.sub.seq === my) { s.err = { text: 'Could not reach Spotify. Check your connection and try again.' }; s.more = false; }
+  } finally { s.loading = false; }
+}
+let rrThrottle = 0;
+function rrSoon() { if (rrThrottle) return; rrThrottle = setTimeout(() => { rrThrottle = 0; rrRender(false); }, 250); }
+async function rrBuildAll() {                              // every song we are allowed to see: saved + playlists + recent, without duplicates
+  const A = RR.all; if (A.running || !A.more) return; A.running = true; A.loading = true; A.err = null; A.skipped = 0;
+  const seen = new Map(), push = (arr) => { for (const t of arr) if (!seen.has(t.id)) seen.set(t.id, t); A.items = Array.from(seen.values()); rrSoon(); };
+  const gen = RR.at;
+  try {
+    A.note = 'Flipping through your saved songs…';
+    while (RR.liked.more && !RR.liked.err && gen === RR.at) { if (RR.liked.loading) { await sleep(80); continue; } await rrLoadLiked(); push(RR.liked.items); }
+    push(RR.liked.items);
+    await rrLoadPlaylists();
+    const lists = (RR.plists.items || []).slice(0, RR_ALL_PLAYLISTS);
+    for (let i = 0; i < lists.length && gen === RR.at; i++) {
+      A.note = 'Opening playlist ' + (i + 1) + ' of ' + lists.length + '…'; rrSoon();
+      for (let off = 0; off < RR_ALL_PER_LIST; off += 50) {
+        let r = await rrPlaylistPage(lists[i].id, off);
+        if (r.status === 429) { await sleep(Math.max(1000, (S.backoffUntil || 0) - Date.now())); r = await rrPlaylistPage(lists[i].id, off); }
+        if (!r.ok) { A.skipped++; break; }
+        const it = (r.data && r.data.items) || [];
+        push(it.map(rrTrack).filter(Boolean));
+        if (!r.data.next || !it.length) break;
+      }
+    }
+    await rrLoadRecent(); push(RR.recent.items);
+    if (!A.items.length && RR.liked.err) A.err = RR.liked.err;
+  } catch (e) {
+    if (e instanceof AuthError) { rrClose(); showGate({ error: e.message }); } else A.err = { text: 'Could not reach Spotify. Check your connection and try again.' };
+  } finally { A.more = false; A.running = false; A.loading = false; A.note = ''; if (gen === RR.at) rrRender(false); }
+}
+
+/* ----- what is on screen now ----- */
+function rrView() {
+  const q = RR.q.trim().toLowerCase();
+  const has = (t) => !q || [t.name, t.artists, t.album, t.owner].some((x) => (x || '').toLowerCase().includes(q));
+  let v;
+  if (RR.sub) { const s = RR.sub; v = { type: 'tracks', title: s.name, src: s, ctx: { uri: s.uri, name: s.name }, load: rrLoadSub, what: 'songs' }; }
+  else if (RR.tab === 'playlists') v = { type: 'playlists', title: 'Playlists', src: RR.plists, load: rrLoadPlaylists, what: 'playlists' };
+  else if (RR.tab === 'albums') v = { type: 'albums', title: 'Albums', src: RR.albums, load: rrLoadAlbums, what: 'albums' };
+  else if (RR.tab === 'recent') v = { type: 'tracks', title: 'Recently Played', src: RR.recent, load: rrLoadRecent, what: 'songs' };
+  else if (RR.tab === 'liked') v = { type: 'tracks', title: 'Liked Songs', src: RR.liked, load: rrLoadLiked, what: 'songs' };
+  else v = { type: 'tracks', title: 'All Songs', src: RR.all, load: rrBuildAll, what: 'songs' };
+  const all = v.src.items || [];
+  v.all = all; v.list = q ? all.filter(has) : all;
+  return v;
+}
+function rrKick() {                                       // load whatever this view is missing
+  const v = rrView(), s = v.src;
+  if (s.loading || !s.more || s.err) return;
+  const my = RR.key;
+  Promise.resolve(v.load()).then(() => { if (RR.open) rrRender(false); if (RR.q && RR.key === my) rrKick(); });
+}
+const rrHash = (str) => { let h = 7; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0; return h; };
+const RR_PLAY = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+function rrCard(t, i) {
+  const h = rrHash(t.id || t.uri), li = document.createElement('li');
+  li.className = 'rr-card' + (h % 4 === 0 ? ' tilt' : '') + (t.kind !== 'track' ? ' ' + t.kind : '');
+  li.style.setProperty('--rot', ((h % 5) - 2) * 0.55 + 'deg');
+  if (t.kind === 'track') li.dataset.id = t.id; else li.dataset.uri = t.uri;
+  const st = h % 11; if (st < 3) li.dataset.st = String(st + 1);
+  const art = t.art ? '<img alt="" loading="lazy" decoding="async">' : '<span class="rr-noart" aria-hidden="true"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="30"/><circle cx="50" cy="50" r="21"/><circle cx="50" cy="50" r="2" class="d"/></svg><i>NO ARTWORK</i></span>';
+  const label = t.kind === 'track' ? 'Details for ' + t.name : 'Open ' + t.name;
+  li.innerHTML = '<div class="rr-sleeve"><span class="rr-disc" aria-hidden="true"><i></i></span>'
+    + '<div class="rr-front"><button class="rr-art" type="button"></button><span class="rr-cat"></span><span class="rr-eq" aria-hidden="true"><i></i><i></i><i></i></span></div>'
+    + '<button class="rr-go" type="button"></button></div>'
+    + '<button class="rr-meta" type="button"><b class="t"></b><span class="a"></span><span class="al"></span></button>';
+  const artBtn = li.querySelector('.rr-art'); artBtn.innerHTML = art; artBtn.setAttribute('aria-label', label);
+  if (t.art) { const im = artBtn.querySelector('img'); im.src = t.art; }
+  li.querySelector('.rr-cat').textContent = 'NR·' + String(i + 1).padStart(4, '0');
+  const go = li.querySelector('.rr-go'); go.innerHTML = RR_PLAY + '<svg class="p" viewBox="0 0 24 24"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
+  go.setAttribute('aria-label', 'Play ' + t.name);
+  li.querySelector('.t').textContent = t.name;
+  if (t.kind === 'track') { li.querySelector('.a').textContent = t.artists; li.querySelector('.al').textContent = t.album; }
+  else if (t.kind === 'album') { li.querySelector('.a').textContent = t.artists; li.querySelector('.al').textContent = (t.total ? t.total + ' tracks' : '') + (t.date ? ' · ' + t.date.slice(0, 4) : ''); }
+  else { li.querySelector('.a').textContent = t.owner ? 'by ' + t.owner : 'Playlist'; li.querySelector('.al').textContent = t.total != null ? t.total + ' tracks' : ''; }
+  if (t.kind === 'track') {
+    artBtn.onclick = () => rrDetail(t);
+    go.onclick = li.querySelector('.rr-meta').onclick = () => rrPlay(t);
+  } else {
+    artBtn.onclick = li.querySelector('.rr-meta').onclick = () => rrOpenSub(t);
+    go.onclick = () => playBody({ context_uri: t.uri }, t.name);
+  }
+  return li;
+}
+function rrMsg(kind, title, text, extra) {
+  const el = $('rrState'); el.innerHTML = '';
+  const box = document.createElement('div'); box.className = 'rr-msg ' + kind;
+  const art = {
+    load: '<div class="rr-spin" aria-hidden="true"></div>',
+    empty: '<svg class="rr-ill" viewBox="0 0 120 100" aria-hidden="true"><rect x="16" y="10" width="88" height="82" rx="5" class="a"/><rect x="22" y="16" width="76" height="70" rx="3" class="b"/><circle cx="60" cy="48" r="22" class="c"/><circle cx="60" cy="48" r="7" class="d"/><path d="M82 78l16-5" class="e"/></svg>',
+    none: '<svg class="rr-ill" viewBox="0 0 120 100" aria-hidden="true"><circle cx="60" cy="48" r="32" class="c"/><circle cx="60" cy="48" r="10" class="d"/><path d="M36 76L84 20" class="e"/></svg>',
+    err: '<svg class="rr-ill" viewBox="0 0 120 100" aria-hidden="true"><circle cx="60" cy="48" r="32" class="c"/><circle cx="60" cy="48" r="10" class="d"/><path d="M60 48L96 22" class="e"/><path d="M92 14l10 6-8 8" class="e"/></svg>',
+  }[kind];
+  box.innerHTML = art + '<h3></h3><p></p>'; box.querySelector('h3').textContent = title; box.querySelector('p').textContent = text || '';
+  if (extra) for (const [label, fn, hot] of extra) { const b = document.createElement('button'); b.className = 'rr-pill' + (hot ? ' hot' : ''); b.type = 'button'; b.textContent = label; b.onclick = fn; box.appendChild(b); }
+  el.appendChild(box);
+}
+function rrHead() {
+  $('rrSaved').textContent = RR.saved != null ? RR.saved.toLocaleString() : '–';
+  $('rrLists').textContent = RR.plists.items ? RR.plists.items.length.toLocaleString() : '–';
+}
+function rrRender(reset) {
+  if (!RR.open) return;
+  const v = rrView(), body = $('rrBody'), keep = body.scrollTop, grid = $('rrGrid');
+  const key = (RR.sub ? 's' + RR.sub.seq : RR.tab) + '|' + RR.q;
+  if (reset || key !== RR.key) { RR.shown = RR_PAGE; RR.key = key; }
+  RR.cur = v;
+  const s = v.src;
+  // toolbar
+  $('rrBack').hidden = !RR.sub; $('rrCrumb').textContent = v.title;
+  const n = v.list.length;
+  $('rrCount').textContent = s.loading && !n ? '' : (RR.q ? n + ' found' : n + (s.more ? '+' : '') + (v.type === 'tracks' ? ' records' : v.type === 'albums' ? ' albums' : ' playlists'));
+  const canPlay = v.type === 'tracks' && n > 0;
+  $('rrPlayAll').hidden = !(RR.sub || (v.type === 'tracks' && n)); $('rrShuffle').hidden = !canPlay;
+  $('rrPlayAll').disabled = !(RR.sub ? true : canPlay);
+  // grid
+  grid.innerHTML = ''; grid.className = 'rr-grid ' + v.type;
+  const frag = document.createDocumentFragment();
+  v.list.slice(0, RR.shown).forEach((t, i) => frag.appendChild(rrCard(t, i)));
+  grid.appendChild(frag);
+  // state
+  const st = $('rrState'); st.innerHTML = '';
+  if (!n) {
+    if (s.err) rrMsg('err', 'THE NEEDLE SKIPPED', s.err.text, [['Try again', () => { s.err = null; s.more = true; if (v.src === RR.all) { RR.all.running = false; } if (s === RR.liked) { s.offset = 0; s.items = []; } rrRender(true); rrKick(); }, true]].concat(s.err.reconnect ? [['Reconnect Spotify', login]] : []));
+    else if (s.loading || s.more) rrMsg('load', RR.q ? 'SEARCHING THE CRATES…' : 'DUSTING OFF THE RECORDS…', s.note || (v.src === RR.all && RR.all.note) || 'One moment, pulling them off the shelf.');
+    else if (RR.q) rrMsg('none', 'NO RECORD FOUND', 'Nothing in “' + RR.q.trim() + '” matches. Try another title, artist or album.');
+    else rrMsg('empty', 'THE CRATE IS EMPTY', RR.sub ? 'There are no songs in here yet.' : { recent: 'Play something and it will show up here.', liked: 'Tap the heart on a song in Spotify and it will land here.', albums: 'Save an album in Spotify and it will be filed here.', playlists: 'No playlists found on this account.', all: 'Nothing to show yet. Save a song or make a playlist in Spotify.' }[RR.tab]);
+  } else {
+    if (s.err) rrMsg('err', 'THE NEEDLE SKIPPED', s.err.text + (v.type === 'tracks' ? ' The records above did load.' : ''), [['Try again', () => { s.err = null; s.more = true; rrKick(); }, true]].concat(s.err.reconnect ? [['Reconnect Spotify', login]] : []));
+    else if (s.loading || s.more) { const m = document.createElement('p'); m.className = 'rr-more'; m.textContent = (v.src === RR.all && RR.all.note) || 'Loading more records…'; st.appendChild(m); }
+    else if (v.src === RR.all && RR.all.skipped) { const m = document.createElement('p'); m.className = 'rr-more'; m.textContent = RR.all.skipped + ' playlist' + (RR.all.skipped > 1 ? 's were' : ' was') + ' skipped because Spotify does not let NEEDLE read ' + (RR.all.skipped > 1 ? 'their' : 'its') + ' songs.'; st.appendChild(m); }
+    else if (v.src === RR.all && RR.plists.items && RR.plists.items.length > RR_ALL_PLAYLISTS) { const m = document.createElement('p'); m.className = 'rr-more'; m.textContent = 'All Songs includes your saved songs and the first ' + RR_ALL_PLAYLISTS + ' playlists. Open the others from Playlists.'; st.appendChild(m); }
+  }
+  body.scrollTop = keep;
+  rrSync();
+  if (RR.q) rrKick();
+  else if (body.scrollHeight - body.clientHeight < 300 && (RR.shown < v.list.length || (s.more && !s.loading && !s.err))) rrMore();
+}
+function rrMore() {
+  const v = rrView();
+  if (RR.shown < v.list.length) { RR.shown += RR_PAGE; return rrRender(false); }
+  rrKick();
+}
+
+/* ----- playback hooks ----- */
+function rrPlay(t) {
+  if (t.id === S.trackId) return control(S.isPlaying ? 'pause' : 'play');          // the record already on the turntable: toggle
+  const v = RR.cur; if (!v) return;
+  if (RR.sub && RR.sub.uri) return playBody({ context_uri: RR.sub.uri, offset: { uri: t.uri } }, t.name);
+  const i = v.list.indexOf(t), from = Math.max(0, Math.min(i, v.list.length - 100));   // Spotify takes up to 100 URIs
+  return playBody({ uris: v.list.slice(from, from + 100).map((x) => x.uri), offset: { uri: t.uri } }, t.name);
+}
+function rrPlayAll(shuffle) {
+  const v = rrView(); if (!v.list.length && !RR.sub) return;
+  if (RR.sub && RR.sub.uri) return playBody({ context_uri: RR.sub.uri }, RR.sub.name, null, shuffle);
+  let list = v.list.slice();
+  if (shuffle) for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
+  return playBody({ uris: list.slice(0, 100).map((x) => x.uri) }, v.title, null, shuffle);
+}
+function rrSync() {                                       // mark what is spinning now; cheap, runs on every player update
+  const room = $('room'); if (!RR.open) return;
+  room.classList.toggle('rr-playing', !!S.isPlaying);
+  for (const c of document.querySelectorAll('#rrGrid .rr-card')) c.classList.toggle('now', c.dataset.id ? c.dataset.id === S.trackId : (!!c.dataset.uri && c.dataset.uri === S.ctxUri));
+  const tr = S.track, has = !!(S.trackId && tr);
+  $('rrNow').hidden = !has;
+  if (has) {
+    $('rrNowTitle').textContent = tr.title || ''; $('rrNowArtist').textContent = tr.artists || '';
+    const im = $('rrNowArt'); if (tr.art && im.getAttribute('src') !== tr.art) im.src = tr.art; im.style.visibility = tr.art ? '' : 'hidden';
+    $('rrNowBtn').classList.toggle('on', !!S.isPlaying);
+  }
+  if (RR.detail) { const d = RR.detail, now = d.id === S.trackId; $('rrDPlay').textContent = now && S.isPlaying ? '❚❚ Pause' : now ? '▶ Resume' : '▶ Play this record'; }
+}
+function rrOnTrack() {
+  if (RR.recent) { RR.recent.more = true; }              // history changed: re-fetch next time it is shown
+  if (!RR.open) return;
+  rrSync();
+  if (RR.tab === 'recent' && !RR.sub) setTimeout(() => { if (RR.open && RR.tab === 'recent' && !RR.sub && !RR.recent.loading) { RR.recent.err = null; rrLoadRecent().then(() => rrRender(false)); } }, 2500);
+}
+
+/* ----- open / close / navigation ----- */
+function rrSetTab(tab) {
+  RR.tab = tab; RR.sub = null; RR.q = ''; $('rrSearch').value = '';
+  for (const b of $('rrTabs').children) { const on = b.dataset.tab === tab; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; }
+  $('rrBody').scrollTop = 0; rrRender(true);
+}
+function rrOpenSub(item) {
+  RR.sub = { kind: item.kind, id: item.id, uri: item.uri, name: item.name, images: item.images || [], date: item.date || '', items: [], offset: 0, more: true, loading: false, err: null, seq: ++RR.seq };
+  RR.q = ''; $('rrSearch').value = ''; $('rrBody').scrollTop = 0; rrRender(true);
+}
+function rrBack() { RR.sub = null; RR.q = ''; $('rrSearch').value = ''; rrRender(true); }
+function rrOpen() {
+  if (S.demo) return toast('The Record Room needs a connected Spotify account (not available in demo mode).');
+  if (!tokens()) return;
+  if (RR.open) return;
+  if (Date.now() - RR.at > 90000 && !RR.all.running) rrReset();
+  RR.open = true; RR.lastFocus = document.activeElement;
+  const room = $('room'); room.hidden = false;
+  document.body.classList.add('room-open'); $('btnLibrary').setAttribute('aria-expanded', 'true');
+  void room.offsetWidth; room.classList.add('open');
+  rrHead(); rrSetTab(RR.tab);
+  if (RR.saved == null && !RR.liked.loading) { api('GET', '/me/tracks', { query: { limit: 1 } }).then((r) => { if (r.ok && r.data && typeof r.data.total === 'number') { RR.saved = r.data.total; rrHead(); } }).catch(() => {}); }
+  if (!RR.plists.items) rrLoadPlaylists().then(rrHead);
+  setTimeout(() => { if (RR.open) $('rrClose').focus({ preventScroll: true }); }, 60);
+}
+function rrClose() {
+  if (!RR.open) return;
+  RR.open = false; rrDetailClose(true);
+  const room = $('room'); room.classList.remove('open', 'rr-playing');
+  document.body.classList.remove('room-open'); $('btnLibrary').setAttribute('aria-expanded', 'false');
+  setTimeout(() => { if (!RR.open) room.hidden = true; }, 520);
+  const f = RR.lastFocus; if (f && f.focus) try { f.focus({ preventScroll: true }); } catch { /* gone */ }
+}
+function rrDetail(t) {
+  RR.detail = t;
+  const im = $('rrDArt'); im.src = t.big || t.art || ''; im.alt = t.album ? 'Cover of ' + t.album : ''; im.style.visibility = (t.big || t.art) ? '' : 'hidden';
+  $('rrDName').textContent = t.name; $('rrDArtist').textContent = t.artists;
+  $('rrDAlbum').textContent = t.album || 'Unknown'; $('rrDDate').textContent = t.date || 'Not provided by Spotify';
+  $('rrDLen').textContent = t.dur ? mmss(t.dur) : 'Unknown'; $('rrDNo').textContent = t.no ? '#' + t.no + (t.explicit ? ' · Explicit' : '') : (t.explicit ? 'Explicit' : 'Not provided');
+  $('rrDCat').textContent = 'CATALOGUE · ' + String(rrHash(t.id) % 100000).padStart(5, '0');
+  const a = $('rrDOpen'); a.hidden = !t.url; if (t.url) a.href = t.url;
+  $('rrDetail').hidden = false; void $('rrDetail').offsetWidth; $('rrDetail').classList.add('on');
+  rrSync(); $('rrDBack').focus({ preventScroll: true });
+}
+function rrDetailClose(quick) {
+  if (!RR.detail) return false;
+  RR.detail = null; const d = $('rrDetail'); d.classList.remove('on');
+  if (quick) d.hidden = true; else setTimeout(() => { if (!RR.detail) d.hidden = true; }, 300);
+  return true;
+}
+function rrEscape() { if (!RR.open) return false; if (!rrDetailClose()) rrClose(); return true; }
+/* dark mode: follows the system until you pick one with the sun/moon button, then remembers your pick */
+function rrThemeNow() { const v = store.get(K.roomTheme); return v === 'dark' || v === 'light' ? v : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); }
+function rrApplyTheme() {
+  const t = rrThemeNow(), b = $('rrTheme');
+  $('room').dataset.theme = t; b.setAttribute('aria-pressed', t === 'dark'); b.setAttribute('aria-label', t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+  b.title = t === 'dark' ? 'Light mode' : 'Dark mode';
+}
+function bindRoom() {
+  rrApplyTheme();
+  $('rrTheme').onclick = () => { store.set(K.roomTheme, rrThemeNow() === 'dark' ? 'light' : 'dark'); rrApplyTheme(); };
+  const mq = matchMedia('(prefers-color-scheme: dark)'); (mq.addEventListener ? mq.addEventListener('change', rrApplyTheme) : mq.addListener(rrApplyTheme));
+  $('btnLibrary').onclick = () => (RR.open ? rrClose() : rrOpen());
+  $('rrClose').onclick = rrClose; $('rrScrim').onclick = rrClose;
+  $('rrTabs').addEventListener('click', (e) => { const b = e.target.closest('button[data-tab]'); if (b) rrSetTab(b.dataset.tab); });
+  $('rrTabs').addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    const t = Array.from($('rrTabs').children), i = t.findIndex((b) => b.getAttribute('aria-selected') === 'true'), n = t[(i + (e.key === 'ArrowRight' ? 1 : t.length - 1)) % t.length];
+    n.focus(); rrSetTab(n.dataset.tab); e.stopPropagation();
+  });
+  $('rrBack').onclick = rrBack;
+  $('rrPlayAll').onclick = () => rrPlayAll(false); $('rrShuffle').onclick = () => rrPlayAll(true);
+  $('rrSearchBtn').onclick = () => {
+    const row = $('rrSearchRow'), show = row.hidden; row.hidden = !show; $('rrSearchBtn').setAttribute('aria-expanded', show);
+    if (show) $('rrSearch').focus(); else { $('rrSearch').value = ''; RR.q = ''; rrRender(true); }
+  };
+  let raf = 0;
+  $('rrSearch').addEventListener('input', () => { RR.q = $('rrSearch').value; cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { $('rrBody').scrollTop = 0; rrRender(true); }); });
+  $('rrSearch').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); if ($('rrSearch').value) { $('rrSearch').value = ''; RR.q = ''; rrRender(true); } else $('rrSearchBtn').click(); } });
+  $('rrBody').addEventListener('scroll', () => { const b = $('rrBody'); if (b.scrollTop + b.clientHeight > b.scrollHeight - 420) rrMore(); }, { passive: true });
+  $('rrDBack').onclick = () => { rrDetailClose(); };
+  $('rrDPlay').onclick = () => { if (RR.detail) rrPlay(RR.detail); };
+  $('rrNowBtn').onclick = () => control(S.isPlaying ? 'pause' : 'play');
+  document.addEventListener('keydown', (e) => {            // keep focus inside the drawer while it is open
+    if (e.key !== 'Tab' || !RR.open || !$('devicesModal').hidden) return;
+    const root = RR.detail ? $('rrDetail') : $('rrPanel');
+    const f = Array.from(root.querySelectorAll('button,a[href],input')).filter((x) => !x.disabled && !x.hidden && x.offsetParent !== null);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (!root.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+    else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+  // swipe the cabinet front to the right to push it shut
+  let sx = 0, sy = 0, dx = 0, drag = false;
+  const head = $('rrHead'), panel = $('rrPanel');
+  head.addEventListener('pointerdown', (e) => { if (e.target.closest('button,input')) return; drag = true; sx = e.clientX; sy = e.clientY; dx = 0; panel.style.transition = 'none'; head.setPointerCapture(e.pointerId); });
+  head.addEventListener('pointermove', (e) => { if (!drag) return; dx = Math.max(0, e.clientX - sx); panel.style.transform = 'translateX(' + dx + 'px)'; });
+  const end = () => { if (!drag) return; drag = false; panel.style.transition = ''; panel.style.transform = ''; if (dx > 110) rrClose(); };
+  head.addEventListener('pointerup', end); head.addEventListener('pointercancel', end);
 }
 
 /* ---------- devices ---------- */
@@ -952,7 +1227,7 @@ async function openDevices() {
 }
 function addEmpty(list, text) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = text; list.appendChild(li); }
 async function transfer(d) {
-  if (PL.ctx) { const c = PL.ctx; PL.ctx = null; return playBody(c.body, c.name, d.id, c.shuffle); }   // a playlist is waiting for a device
+  if (WAIT.ctx) { const c = WAIT.ctx; WAIT.ctx = null; return playBody(c.body, c.name, d.id, c.shuffle); }   // a playlist is waiting for a device
   try {
     const r = await api('PUT', '/me/player', { body: { device_ids: [d.id], play: true } });
     if (r.ok) { $('devicesModal').hidden = true; hideNotice(); toast('Playing on ' + d.name); setTimeout(poll, 800); }
@@ -1354,20 +1629,10 @@ function bind() {
   $('btnLyPickClose').onclick = closeLyPick;
   let lyQT = 0; $('lyPickQ').addEventListener('input', () => { clearTimeout(lyQT); lyQT = setTimeout(runLyPick, 400); });
   setInterval(() => { if (!document.hidden) lyTick(false); }, 200);
-  $('btnDevicesClose').onclick = () => { $('devicesModal').hidden = true; PL.ctx = null; };
-  $('btnLibrary').onclick = openLibrary;
+  $('btnDevicesClose').onclick = () => { $('devicesModal').hidden = true; WAIT.ctx = null; };
+  bindRoom();
   $('btnQueue').onclick = openQueue;
   $('btnQueueClose').onclick = closeQueue;
-  $('btnLibClose').onclick = () => { $('libModal').hidden = true; };
-  $('btnLibBack').onclick = () => { showListView(); if (PL.list) renderPlaylists(); };
-  $('libSearch').addEventListener('input', () => {
-    if (PL.view === 'tracks') { renderTracks(); if ($('libSearch').value && PL.more) loadAllTracks(); }
-    else if (PL.list) renderPlaylists();
-  });
-  $('plList').addEventListener('scroll', () => {
-    const l = $('plList');
-    if (PL.view === 'tracks' && PL.more && !PL.loading && l.scrollTop + l.clientHeight > l.scrollHeight - 160) loadTracks(PL.seq);
-  });
   bindTurntable(); bindLocal();
   $('btnAmbient').onclick = () => setAmbient(!document.body.classList.contains('ambient'));
   const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches;
@@ -1378,7 +1643,7 @@ function bind() {
   document.addEventListener('webkitfullscreenchange', () => { setViewportVars(); renderArm(); });
   if (window.visualViewport) visualViewport.addEventListener('resize', setViewportVars);
   $('btnLogout').onclick = () => {
-    store.del(K.tokens); stopLocalPlayer(); closeQueue(); Q.now = null; Q.items = []; PL.list = null; $('libModal').hidden = true; S.isPlaying = false; S.trackId = null; S.track = null; clearTimeout(pollTimer);
+    store.del(K.tokens); stopLocalPlayer(); closeQueue(); Q.now = null; Q.items = []; rrClose(); rrReset(); S.isPlaying = false; S.trackId = null; S.track = null; clearTimeout(pollTimer);
     lySeq++; LY.id = null; lyClear();
     renderPlaying(); hideNotice(); showGate({});
   };
@@ -1393,10 +1658,11 @@ function bind() {
   $('stage').addEventListener('click', peek);
   document.addEventListener('keydown', (e) => {
     if (e.target && e.target.tagName === 'INPUT') return;
+    if (RR.open && e.key !== 'Escape' && e.key !== 'p' && e.key !== 'P') return;   // the Record Room is modal: its own buttons handle keys
     if (e.code === 'Space') { e.preventDefault(); control(S.isPlaying ? 'pause' : 'play'); }
     else if (e.key === 'q' || e.key === 'Q') openQueue();
-    else if (e.key === 'Escape') { closeLyPick(); closeQueue(); $('libModal').hidden = true; $('devicesModal').hidden = true; PL.ctx = null; }
-    else if (e.key === 'p' || e.key === 'P') openLibrary();
+    else if (e.key === 'Escape') { if (!$('devicesModal').hidden || !$('queueModal').hidden || !$('lyPickModal').hidden) { closeLyPick(); closeQueue(); $('devicesModal').hidden = true; WAIT.ctx = null; } else if (!rrEscape()) { /* nothing open */ } }
+    else if (e.key === 'p' || e.key === 'P') (RR.open ? rrClose() : rrOpen());
     else if (e.key === 's' || e.key === 'S') setSfx(!SFX.on);
     else if (e.key === 'ArrowRight') control('next');
     else if (e.key === 'ArrowLeft') control('prev');

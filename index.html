@@ -13,6 +13,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shrikhand&family=Special+Elite&display=swap" media="print" onload="this.media='all'">
 </head>
 <body>
 
@@ -87,7 +88,7 @@
   <div class="tools">
     <button class="icon sm" id="btnQueue" title="Up next (Q)" aria-label="Show the queue"><svg viewBox="0 0 24 24"><path d="M4 6h12M4 11h12M4 16h7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M16 15l5 3-5 3z" fill="currentColor"/><path d="M13 15v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
     <button class="icon sm" id="btnSfx" title="Vinyl sounds (S)" aria-label="Vinyl scratch sounds" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="slash" d="M3 3l18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
-    <button class="icon sm" id="btnLibrary" title="Your playlists (P)" aria-label="Browse your playlists"><svg viewBox="0 0 24 24"><path d="M4 6h12M4 11h12M4 16h7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M16 14.5l5 3-5 3z" fill="currentColor"/></svg></button>
+    <button class="icon sm" id="btnLibrary" title="Record Room (P)" aria-label="Open the Record Room, your collection" aria-expanded="false"><svg viewBox="0 0 24 24"><rect x="3" y="10" width="18" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6.500 10V5.500M10.500 10V4M14.500 10V5M18 10V6.500" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M8 15h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
     <button class="icon sm" id="btnLyrics" title="Lyrics (L)" aria-label="Show lyrics" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 10h10M4 15h16M4 20h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
     <button class="icon sm" id="btnDevices"title="Choose playback device" aria-label="Choose playback device"><svg viewBox="0 0 24 24"><path d="M4 6h16v10H4zM2 18h20v2H2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></button>
     <button class="icon sm" id="btnAmbient" title="Ambient mode (A)" aria-label="Ambient mode"><svg viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg></button>
@@ -137,14 +138,77 @@
   </div>
 </section>
 
-<section id="libModal" class="modal" hidden>
-  <div class="card">
-    <div class="lib-head"><button class="mini" id="btnLibBack" hidden>‹ Back</button><h2 id="libTitle">Your playlists</h2></div>
-    <input id="libSearch" type="search" placeholder="Search your library" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Search your playlists">
-    <ul id="plList"></ul>
-    <button class="linkish" id="btnLibClose">Close</button>
-  </div>
-</section>
+<div id="room" class="room" hidden>
+  <div class="rr-scrim" id="rrScrim"></div>
+  <aside class="rr-panel" id="rrPanel" role="dialog" aria-modal="true" aria-labelledby="rrTitle" tabindex="-1">
+    <header class="rr-head" id="rrHead">
+      <div class="rr-plate">
+        <h2 id="rrTitle">NEEDLE RECORD ROOM</h2>
+        <p>YOUR MUSIC, YOUR COLLECTION.</p>
+      </div>
+      <span class="rr-stamp" aria-hidden="true">ORIGINAL<br>PRESSING</span>
+      <div class="rr-stats">
+        <span class="rr-tag"><b id="rrSaved">–</b> saved tracks</span>
+        <span class="rr-tag"><b id="rrLists">–</b> playlists</span>
+      </div>
+      <div class="rr-hbtns">
+        <button class="rr-round rr-theme" id="rrTheme" type="button" aria-label="Switch to dark mode" aria-pressed="false"><svg class="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.600 16.600l2.100 2.100M18.700 5.300l-2.100 2.100M7.400 16.600l-2.100 2.100" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg><svg class="moon" viewBox="0 0 24 24"><path d="M20 14.500A8.500 8.500 0 0 1 9.500 4 8.500 8.500 0 1 0 20 14.500z" fill="currentColor"/></svg></button>
+        <button class="rr-round" id="rrSearchBtn" type="button" aria-label="Search the collection" aria-expanded="false"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M15.5 15.5L21 21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
+        <button class="rr-round" id="rrClose" type="button" aria-label="Close the Record Room"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg></button>
+      </div>
+      <div class="rr-search" id="rrSearchRow" hidden>
+        <input id="rrSearch" type="search" placeholder="Search songs, artists, albums…" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Search the collection">
+      </div>
+    </header>
+
+    <nav class="rr-tabs" id="rrTabs" role="tablist" aria-label="Collection sections">
+      <button role="tab" type="button" data-tab="all" aria-selected="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3"/><path d="M12 6.2a5.8 5.8 0 0 1 5.8 5.8"/></svg><span>All Songs</span></button>
+      <button role="tab" type="button" data-tab="playlists" aria-selected="false"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2.2"/><circle cx="8.5" cy="12" r="2"/><circle cx="15.5" cy="12" r="2"/><path d="M8 19l1.4-3h5.2L16 19"/></svg><span>Playlists</span></button>
+      <button role="tab" type="button" data-tab="albums" aria-selected="false"><svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="12.5" rx="1.6"/><path d="M7.5 8a4.5 4.5 0 0 1 9 0"/><circle cx="12" cy="14.5" r="2.4"/></svg><span>Albums</span></button>
+      <button role="tab" type="button" data-tab="recent" aria-selected="false"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5.2l3.4 2"/></svg><span>Recently Played</span></button>
+      <button role="tab" type="button" data-tab="liked" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M12 20s-7.2-4.4-8.9-9C2 7.800 3.700 5 6.600 5c2 0 3.300 1.100 4 2.300h2.800C14.100 6.100 15.400 5 17.400 5c2.900 0 4.600 2.800 3.500 6C19.200 15.600 12 20 12 20z"/></svg><span>Liked Songs</span></button>
+    </nav>
+
+    <div class="rr-bar" id="rrBar">
+      <button class="rr-pill" id="rrBack" type="button" hidden>‹ Back</button>
+      <div class="rr-crumb"><b id="rrCrumb">All Songs</b><span id="rrCount"></span></div>
+      <div class="rr-acts">
+        <button class="rr-pill hot" id="rrPlayAll" type="button" hidden>▶ Play</button>
+        <button class="rr-pill" id="rrShuffle" type="button" hidden>⤮ Shuffle collection</button>
+      </div>
+    </div>
+
+    <div class="rr-body" id="rrBody">
+      <ul class="rr-grid" id="rrGrid"></ul>
+      <div class="rr-state" id="rrState" aria-live="polite"></div>
+    </div>
+
+    <div class="rr-now" id="rrNow" hidden>
+      <img id="rrNowArt" alt="">
+      <div class="rr-now-t"><span class="lbl">NOW SPINNING</span><b id="rrNowTitle"></b><span id="rrNowArtist"></span></div>
+      <button class="rr-round hot" id="rrNowBtn" type="button" aria-label="Play or pause"><svg class="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg><svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg></button>
+    </div>
+
+    <section class="rr-detail" id="rrDetail" hidden role="dialog" aria-modal="true" aria-labelledby="rrDName">
+      <button class="rr-pill" id="rrDBack" type="button">‹ Back to the crate</button>
+      <div class="rr-d-card">
+        <div class="rr-d-art"><img id="rrDArt" alt=""></div>
+        <div class="rr-d-info">
+          <span class="rr-d-cat" id="rrDCat"></span>
+          <h3 id="rrDName"></h3>
+          <p class="rr-d-artist" id="rrDArtist"></p>
+          <dl>
+            <dt>Album</dt><dd id="rrDAlbum"></dd>
+            <dt>Released</dt><dd id="rrDDate"></dd>
+            <dt>Length</dt><dd id="rrDLen"></dd>
+            <dt>Track</dt><dd id="rrDNo"></dd>
+          </dl>
+          <div class="rr-d-btns"><button class="rr-pill hot" id="rrDPlay" type="button">▶ Play this record</button><a class="rr-pill" id="rrDOpen" target="_blank" rel="noopener" hidden>Open in Spotify</a></div>
+        </div>
+      </div>
+    </section>
+  </aside>
+</div>
 
 <section id="queueModal" class="modal" hidden>
   <div class="card">
