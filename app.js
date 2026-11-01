@@ -266,7 +266,7 @@ function renderArm() {
   if (S.armDrag) return;
   const [a, b] = armRange();
   const frac = S.duration ? Math.min(1, curProgress() / S.duration) : 0;
-  const armUp = MUTE.on || (S.demo && document.body.classList.contains('scrubbing'));   // arm lifts while the song is paused for scrubbing
+  const armUp = MUTE.on || S.launching || (S.demo && document.body.classList.contains('scrubbing'));   // arm lifts while the song is paused for scrubbing
   const ang = ((S.isPlaying || S.armDown) && !S.lifted && !armUp) ? a + (b - a) * frac : 0;
   $('stage').style.setProperty('--arm-angle', ang.toFixed(2) + 'deg');
 }
@@ -1061,10 +1061,13 @@ function rrRender(reset) {
   $('rrPlayAll').hidden = !(RR.sub || (v.type === 'tracks' && n)); $('rrShuffle').hidden = !canPlay;
   $('rrPlayAll').disabled = !(RR.sub ? true : canPlay);
   // grid
-  grid.innerHTML = ''; grid.className = 'rr-grid ' + v.type;
+  const want = v.list.slice(0, RR.shown), prev = RR.drawn || [];
+  const keepOld = !reset && key === RR.drawnKey && prev.length > 0 && prev.length <= want.length && prev.every((t, i) => t === want[i]);
   const frag = document.createDocumentFragment();
-  v.list.slice(0, RR.shown).forEach((t, i) => frag.appendChild(rrCard(t, i)));
+  if (!keepOld) { grid.innerHTML = ''; grid.className = 'rr-grid ' + v.type; }      // same sleeves as before: leave them alone (no reload, no flicker) and only add the new ones
+  for (let i = keepOld ? prev.length : 0; i < want.length; i++) frag.appendChild(rrCard(want[i], i));
   grid.appendChild(frag);
+  RR.drawn = want; RR.drawnKey = key;
   // state
   const st = $('rrState'); st.innerHTML = '';
   if (!n) {
@@ -1105,38 +1108,67 @@ function rrPlayAll(shuffle) {
   return playBody({ uris: list.slice(0, 100).map((x) => x.uri) }, v.title, null, shuffle);
 }
 /* ----- the record leaves the crate and lands on the turntable ----- */
+let rrBusy = false;
 async function rrLaunch(fromEl, trackId, run) {
   if (trackId && trackId === S.trackId) return run();                 // already on the turntable: just play/pause
-  const r = fromEl && fromEl.getBoundingClientRect(), rect = r && r.width ? { left: r.left, top: r.top, width: r.width, height: r.height } : null;   // measured now, before the drawer moves
-  const ok = await run();
-  if (ok === true) rrFly(rect, trackId);
+  if (rrBusy) return; rrBusy = true;
+  try {
+    const card = fromEl && fromEl.classList.contains('rr-disc') ? fromEl.closest('.rr-card') : null;
+    let pull = 0.8;
+    if (card) {                                                       // 1. the record slides out of its sleeve (less far if the card is right under the top edge, where the crate would clip it)
+      const room = card.getBoundingClientRect().top - $('rrBody').getBoundingClientRect().top - 6, size = fromEl.getBoundingClientRect().width || 150;
+      pull = Math.max(0.3, Math.min(0.8, room / size)); card.style.setProperty('--pull', pull); card.classList.add('pulling');
+    }
+    const t0 = performance.now();
+    const ok = await run();
+    if (ok !== true) { if (card) card.classList.remove('pulling'); return; }
+    const wait = 580 - (performance.now() - t0); if (wait > 0) await sleep(wait);
+    const r = fromEl.getBoundingClientRect();
+    rrFly(r.width ? { left: r.left, top: r.top, width: r.width, height: r.height } : null, trackId, card, card ? pull : 1);
+  } finally { rrBusy = false; }
 }
-function rrFly(r0, trackId) {
-  rrClose();                                                          // pushes the drawer shut so the turntable shows
+async function rrWaitSwap(id) {                                       // until the real record shows the new song
+  for (let i = 0; i < 30 && id && S.trackId !== id; i++) await sleep(100);
+  await sleep(id ? 250 : 900);
+  for (let i = 0; i < 40 && $('stage').classList.contains('changing'); i++) await sleep(100);
+}
+function rrFly(r0, trackId, card, pull) {
+  rrClose();                                                          // 2. the drawer slides shut ...
   const st = $('stage'), rec = $('record');
-  if (!r0 || !st.offsetWidth || matchMedia('(prefers-reduced-motion: reduce)').matches || !st.animate) return;
+  const tidy = () => { if (card) card.classList.remove('pulling', 'gone'); };
+  if (!r0 || !st.offsetWidth || !st.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return setTimeout(tidy, 700);
   const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
-  const S1 = rec.offsetWidth;                                         // the real record's size and spot (layout values, so the stage's zoom while the drawer closes doesn't matter)
+  const S1 = rec.offsetWidth;                                         // the real record's size and spot (layout values: unaffected by the stage zoom while the drawer closes)
   const cx1 = (vw - st.offsetWidth) / 2 + rec.offsetLeft + S1 / 2, cy1 = (vh - st.offsetHeight) / 2 + rec.offsetTop + S1 / 2;
   const cx0 = r0.left + r0.width / 2, cy0 = r0.top + r0.height / 2, k0 = Math.max(0.14, Math.min(r0.width, r0.height) / S1);
+  const hx = vw / 2, hy = vh / 2 - S1 * 0.02, hk = Math.min(0.95, Math.min(vw, vh) * 0.8 / S1);   // the "show it to the room" spot: centre of the screen
+  document.body.classList.add('launching'); S.launching = true; renderArm();   // ... the old record is lifted off and the tonearm swings back to rest
+  if (card) card.classList.add('gone');
   const el = document.createElement('div'); el.className = 'rr-fly'; el.setAttribute('aria-hidden', 'true');
-  el.style.width = el.style.height = S1 + 'px'; document.body.appendChild(el);
+  el.innerHTML = '<i class="lab d"></i><i class="lab o"></i>'; el.style.width = el.style.height = S1 + 'px'; document.body.appendChild(el);
   const T = (x, y, k, rot) => 'translate(' + (x - S1 / 2) + 'px,' + (y - S1 / 2) + 'px) scale(' + k + ') rotate(' + rot + 'deg)';
-  const mx = (cx0 + cx1) / 2, my = Math.min(cy0, cy1) - Math.max(50, S1 * 0.14);
+  const sh = (d, b) => '0 ' + Math.round(S1 * d) + 'px ' + Math.round(S1 * b) + 'px rgba(0,0,0,.55)';
+  const D = 2500;
+  if (pull < 1) el.animate([{ clipPath: 'inset(0 0 ' + ((1 - pull) * 100) + '% 0)' }, { clipPath: 'inset(0 0 0% 0)' }], { duration: 300, fill: 'forwards', easing: 'ease-out' });   // only the part that was out of the sleeve shows at first, so there is no pop when it takes off
   const a = el.animate([
-    { transform: T(cx0, cy0, k0, 0), offset: 0 },
-    { transform: T(cx0, cy0 - 22, k0 * 1.1, -25), offset: 0.14 },
-    { transform: T(mx, my, Math.max(k0, 0.5) * 1.08, 150), offset: 0.55 },
-    { transform: T(cx1, cy1, 1.05, 335), offset: 0.88 },
-    { transform: T(cx1, cy1, 1, 360), offset: 1 },
-  ], { duration: 1150, easing: 'cubic-bezier(.4,.05,.25,1)', fill: 'forwards' });
-  const done = () => { el.remove(); };
-  a.onfinish = async () => {                                          // stay on the platter until the real record shows the new song
-    for (let i = 0; i < 28 && trackId && S.trackId !== trackId; i++) await sleep(100);
-    if (!trackId) await sleep(500); else await sleep(450);
-    el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 320, fill: 'forwards' }).onfinish = done;
+    { transform: T(cx0, cy0, k0, 0), boxShadow: sh(0.01, 0.03), offset: 0, easing: 'cubic-bezier(.3,.7,.2,1)' },
+    { transform: T(hx, hy, hk, 130), boxShadow: sh(0.14, 0.3), offset: 0.3 },                          // 3. shown to the screen
+    { transform: T(hx, hy, hk * 1.03, 205), boxShadow: sh(0.16, 0.34), offset: 0.5, easing: 'cubic-bezier(.5,0,.2,1)' },
+    { transform: T(cx1, cy1, 1.07, 305), boxShadow: sh(0.07, 0.15), offset: 0.82, easing: 'cubic-bezier(.3,.6,.3,1)' },   // 4. hovers over the platter
+    { transform: T(cx1, cy1, 1, 360), boxShadow: sh(0.025, 0.06), offset: 1 },                          // ... and is set down
+  ], { duration: D, fill: 'forwards' });
+  const lab = el.querySelector('.o'); lab.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 700, delay: 350, fill: 'forwards', easing: 'ease' });   // the cabinet's orange label turns into NEEDLE's dark one
+  let released = false;
+  const release = async () => {
+    if (released) return; released = true;
+    document.body.classList.remove('launching');                      // the real record fades back in as the flyer fades out
+    el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 380, fill: 'forwards' }).onfinish = () => el.remove();
+    await sleep(300);
+    S.launching = false; renderArm(); tidy();                         // 5. last of all, the tonearm lowers onto the record
   };
-  a.oncancel = done;
+  a.onfinish = async () => { await rrWaitSwap(trackId); release(); };
+  a.oncancel = release;
+  setTimeout(release, 10000);                                         // never leave the turntable stuck
 }
 function rrSync() {                                       // mark what is spinning now; cheap, runs on every player update
   const room = $('room'); if (!RR.open) return;
