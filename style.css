@@ -673,3 +673,10 @@ body.room-open .ui{opacity:.35;transition:opacity .45s}
   .rr-stamp{top:auto;right:14px;bottom:12px}
   .rr-plate h2{font-size:21px}
 }
+
+/* ----- dark mode (whole app): the cover-colour background turns into a very dark shade of itself ----- */
+#btnTheme .moon{display:none}body.dark #btnTheme .sun{display:none}body.dark #btnTheme .moon{display:block}
+body.dark .vignette{background:radial-gradient(120% 100% at 55% 50%,transparent 45%,rgba(0,0,0,.55))}
+body.dark .grain{opacity:.09}
+/* the background reaches past the bottom edge, so iOS toolbars / home-indicator areas never show a bare strip */
+#bg{bottom:-90px}

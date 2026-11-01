@@ -9,10 +9,11 @@
 
 const CFG = Object.assign({ CLIENT_ID: '', POLL_PLAYING_MS: 3000, POLL_PAUSED_MS: 6000 }, window.NEEDLE_CONFIG || {});
 const NEED_SCOPES = ['user-read-playback-state', 'user-modify-playback-state', 'playlist-read-private', 'playlist-read-collaborative', 'user-library-read', 'streaming', 'user-read-email', 'user-read-private'];
-const SCOPES = NEED_SCOPES.join(' ');
+const OPT_SCOPES = ['user-read-recently-played'];       // asked for at login, but the app works without it (only the Recently Played shelf needs it)
+const SCOPES = NEED_SCOPES.concat(OPT_SCOPES).join(' ');
 const API = 'https://api.spotify.com/v1';
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
-const K = { tokens: 'needle.tokens', verifier: 'needle.verifier', state: 'needle.state', cid: 'needle.clientId', ambient: 'needle.ambient', lyrics: 'needle.lyrics', local: 'needle.local', sfx: 'needle.sfx', roomTheme: 'needle.roomTheme' };
+const K = { tokens: 'needle.tokens', verifier: 'needle.verifier', state: 'needle.state', cid: 'needle.clientId', ambient: 'needle.ambient', lyrics: 'needle.lyrics', local: 'needle.local', sfx: 'needle.sfx', theme: 'needle.theme' };
 
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -366,8 +367,27 @@ function bgCss(p) {
     'radial-gradient(45% 45% at 0% 0%,' + c(p.L, .85) + ',transparent 75%),' +
     'linear-gradient(100deg,' + c(p.L) + ' 0%,' + c(p.M) + ' 38%,' + c(p.D) + ' 72%,' + c(p.M) + ' 100%)';
 }
+/* ---------- dark mode: the same cover-colour background, but a really dark shade of it ---------- */
+let curPal = null;
+function themeNow() { const v = store.get(K.theme); return v === 'dark' || v === 'light' ? v : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); }
+const DARK_LUM = { L: 34, A: 28, B: 26, M: 19, D: 9 };           // how bright each palette colour may be in dark mode (0-255)
+function darkPal(p) {                                             // keep each colour's hue, pull the brightness way down
+  const out = {};
+  for (const k of Object.keys(DARK_LUM)) { const c = p[k] || DEFAULT_PAL[k], l = lum(c) || 1, f = Math.min(1, DARK_LUM[k] / l); out[k] = c.map((v) => v * f); }
+  return out;
+}
+function applyTheme() {
+  const t = themeNow(), dark = t === 'dark';
+  document.body.classList.toggle('dark', dark);
+  const room = $('room'); if (room) room.dataset.theme = t;
+  for (const id of ['btnTheme', 'rrTheme']) { const b = $(id); if (!b) continue; b.setAttribute('aria-pressed', dark); b.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode'); b.title = dark ? 'Light mode' : 'Dark mode'; }
+  setBackground(curPal);
+}
+function toggleTheme() { store.set(K.theme, themeNow() === 'dark' ? 'light' : 'dark'); applyTheme(); }
 function setBackground(p) {
+  curPal = p || null;
   p = p || DEFAULT_PAL;
+  if (document.body.classList.contains('dark')) p = darkPal(p);
   const A = $('bgA'), B = $('bgB'), next = S.bgOn === 'A' ? B : A, prev = S.bgOn === 'A' ? A : B;
   next.style.background = bgCss(p); next.classList.add('on'); prev.classList.remove('on');
   S.bgOn = S.bgOn === 'A' ? 'B' : 'A';
@@ -1153,17 +1173,9 @@ function rrDetailClose(quick) {
   return true;
 }
 function rrEscape() { if (!RR.open) return false; if (!rrDetailClose()) rrClose(); return true; }
-/* dark mode: follows the system until you pick one with the sun/moon button, then remembers your pick */
-function rrThemeNow() { const v = store.get(K.roomTheme); return v === 'dark' || v === 'light' ? v : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); }
-function rrApplyTheme() {
-  const t = rrThemeNow(), b = $('rrTheme');
-  $('room').dataset.theme = t; b.setAttribute('aria-pressed', t === 'dark'); b.setAttribute('aria-label', t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
-  b.title = t === 'dark' ? 'Light mode' : 'Dark mode';
-}
 function bindRoom() {
-  rrApplyTheme();
-  $('rrTheme').onclick = () => { store.set(K.roomTheme, rrThemeNow() === 'dark' ? 'light' : 'dark'); rrApplyTheme(); };
-  const mq = matchMedia('(prefers-color-scheme: dark)'); (mq.addEventListener ? mq.addEventListener('change', rrApplyTheme) : mq.addListener(rrApplyTheme));
+  if (!$('room') || !$('rrTheme')) { console.warn('NEEDLE: index.html is out of date (no Record Room markup). Upload every file from the zip.'); const b = $('btnLibrary'); if (b) b.hidden = true; return; }   // never let a half-uploaded site break the player
+  $('rrTheme').onclick = toggleTheme;
   $('btnLibrary').onclick = () => (RR.open ? rrClose() : rrOpen());
   $('rrClose').onclick = rrClose; $('rrScrim').onclick = rrClose;
   $('rrTabs').addEventListener('click', (e) => { const b = e.target.closest('button[data-tab]'); if (b) rrSetTab(b.dataset.tab); });
@@ -1631,6 +1643,8 @@ function bind() {
   setInterval(() => { if (!document.hidden) lyTick(false); }, 200);
   $('btnDevicesClose').onclick = () => { $('devicesModal').hidden = true; WAIT.ctx = null; };
   bindRoom();
+  if ($('btnTheme')) $('btnTheme').onclick = toggleTheme;
+  { const mq = matchMedia('(prefers-color-scheme: dark)'); (mq.addEventListener ? mq.addEventListener('change', applyTheme) : mq.addListener(applyTheme)); }
   $('btnQueue').onclick = openQueue;
   $('btnQueueClose').onclick = closeQueue;
   bindTurntable(); bindLocal();
@@ -1682,7 +1696,7 @@ async function init() {
   bind();
   if (store.get(K.ambient) === '1') document.body.classList.add('ambient');
   if (store.get(K.lyrics) === '1') setLyrics(true);
-  setBackground(null);
+  applyTheme();
   setLabel({ title: 'NEEDLE', artists: 'Connect · Play · Spin', album: '' });
   if (new URLSearchParams(location.search).has('demo')) return startDemo();
   try { await handleCallback(); }
