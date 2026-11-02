@@ -45,7 +45,7 @@ Local test instead: `python3 -m http.server 8080 --bind 127.0.0.1`, then open `h
 
 ## Features
 
-- Vinyl spins while playing, stops on pause; tonearm lifts and drops on track change and slowly tracks across the record.
+- Vinyl spins while playing, stops on pause; tonearm lifts and drops on track change and slowly tracks across the record. Next/previous: the song pauses and the tonearm lifts, the new record's label swaps in, then the tonearm lowers and only then does the new song start.
 - Sleeve, label and background update with each track; colours are sampled from the real cover art.
 - Up next: the queue icon (or **Q**) shows what's playing and what's queued. Tap a song to skip ahead to it (Spotify has no direct jump, so NEEDLE skips forward that many times).
 - Background: tinted from the real colours of the current cover (dominant colour, a second accent colour and a dark base), cross-fading between songs and drifting slowly. Greyscale covers fall back to their greys.

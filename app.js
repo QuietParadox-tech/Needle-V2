@@ -675,8 +675,29 @@ function setLyrics(on) {
 /* =====================================================================
    Controls (never pretend success: UI only changes after Spotify says OK)
    ===================================================================== */
-async function control(kind) {
+let skipping = false;
+async function skipTrack(kind) {                                       // next/prev: the arm comes off first, the new song only starts once the arm is back down
+  if (skipping) return true; skipping = true;
+  try {
+    const was = S.isPlaying, prev = S.trackId;
+    S.lifted = true; renderArm();
+    if (was) await control('pause', true);
+    const ok = await control(kind, true);
+    if (!ok) return false;
+    if (was) setTimeout(() => { if (S.lifted) control('pause', true); }, 150);   // some devices start playing on skip: keep it silent while the arm is up
+    for (let i = 0; i < 60 && (S.trackId === prev || $('stage').classList.contains('changing')); i++) await sleep(100);
+    await sleep(300);
+    if (!was) return true;
+    S.armDown = true; S.lifted = false; renderArm();                   // the tonearm lowers ...
+    await sleep(950);
+    const r = await control('play', true);                             // ... and only then does the new song start
+    S.armDown = false; renderPlaying();
+    return r;
+  } finally { skipping = false; S.lifted = false; renderArm(); }
+}
+async function control(kind, raw) {
   if (S.demo) { demoControl(kind); return true; }
+  if (!raw && (kind === 'next' || kind === 'prev')) return skipTrack(kind);
   activateLocal();
   if (LOCAL.player && LOCAL.id && S.device && S.device.id === LOCAL.id) {
     try {
