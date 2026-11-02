@@ -695,3 +695,121 @@ body.launching #record{opacity:0;scale:.95}
 
 html{background-color:#2a1a10}
 body{background:transparent}
+
+/* =====================================================================
+   RETRO — the whole app wears the Record Room's 1970s record-shop look:
+   burnt orange, butter, cream paper, espresso wood, Shrikhand + typewriter type.
+   ===================================================================== */
+:root{
+  --r-orange:#c8541c; --r-orange-d:#9c3c10; --r-cream:#f6ead0; --r-paper:#eedcb4; --r-paper-d:#dcc594;
+  --r-brown:#2b1810; --r-brown-2:#432618; --r-butter:#f3c44f; --r-ink:#2e1a10; --r-edge:#a98d5c;
+  --r-display:"Shrikhand","Cooper Black","Georgia",serif;
+  --r-type:"Special Elite","American Typewriter","Courier New",monospace;
+  --r-grain:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .2  0 0 0 0 .1  0 0 0 0 .05  0 0 0 .55 0'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
+  --r-wood:repeating-linear-gradient(92deg,rgba(255,200,130,.06) 0 2px,rgba(0,0,0,.09) 2px 5px,rgba(255,200,130,.035) 5px 9px),linear-gradient(180deg,#58341f,#2f1b11);
+  --r-stripes:linear-gradient(180deg,var(--r-orange) 0 33%,var(--r-butter) 33% 66%,var(--r-cream) 66%);
+}
+body{font-family:var(--r-type)}
+.grain{opacity:.2}
+#bg::after{content:"";position:absolute;inset:0;z-index:2;pointer-events:none;opacity:.5;
+  background:radial-gradient(rgba(20,8,0,.16) 1px,transparent 1.4px) 0 0/5px 5px}
+
+/* ---- top bar ---- */
+.wordmark{font:400 clamp(24px,3.2vw,34px)/1 var(--r-display);letter-spacing:.05em;opacity:1;color:var(--r-butter);
+  text-shadow:2px 2px 0 var(--r-orange-d),4px 4px 0 rgba(0,0,0,.35)}
+.brand{gap:7px}
+.brand::after{content:"";display:block;width:100%;max-width:150px;height:9px;border-radius:5px;background:var(--r-stripes);box-shadow:0 2px 0 rgba(0,0,0,.4)}
+.cap{font:400 12px/1 var(--r-type);letter-spacing:.14em;text-transform:uppercase;opacity:.85;color:var(--r-cream);text-shadow:0 1px 0 rgba(0,0,0,.5)}
+.tools{opacity:1;gap:2px;padding:4px 8px;border-radius:999px;background:var(--r-wood);border:2px solid rgba(246,234,208,.4);
+  box-shadow:0 3px 0 rgba(0,0,0,.5),0 8px 16px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,220,160,.18)}
+.tools button.icon{color:var(--r-cream)}
+.tools button.icon:active{background:rgba(243,196,79,.25)}
+button.icon.on,.tools button.icon[aria-pressed="true"]{background:var(--r-butter);color:var(--r-ink);box-shadow:inset 0 2px 3px rgba(90,50,0,.35)}
+
+/* ---- the receiver panel at the bottom ---- */
+#dock{width:min(92vw,580px);padding:20px 22px 14px;gap:8px;border-radius:20px;background:var(--r-wood);
+  border:2px solid rgba(246,234,208,.4);box-shadow:0 5px 0 rgba(0,0,0,.5),0 18px 34px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,220,160,.2)}
+#dock::before{content:"";position:absolute;left:18px;right:18px;top:7px;height:7px;border-radius:4px;background:var(--r-stripes);opacity:.95}
+.progress{font:400 14px var(--r-type);color:var(--r-butter);letter-spacing:.06em;gap:12px}
+.bar{height:30px}
+.track{position:relative;height:11px;border-radius:6px;background:rgba(0,0,0,.55);border:1px solid rgba(246,234,208,.3);box-shadow:inset 0 2px 4px rgba(0,0,0,.6)}
+.track::after{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(90deg,transparent 0 9px,rgba(0,0,0,.4) 9px 10px)}
+.fill{background:linear-gradient(90deg,var(--r-orange),var(--r-butter))}
+.btns{background:none;border:0;padding:2px 0 0;gap:18px}
+#dock button.icon{width:50px;height:50px;border:2px solid var(--r-ink);background:var(--r-cream);color:var(--r-ink);
+  box-shadow:0 4px 0 var(--r-edge),0 8px 10px rgba(0,0,0,.4);transition:transform .12s,box-shadow .12s}
+#dock button.icon:active{background:var(--r-paper);transform:translateY(4px);box-shadow:0 0 0 var(--r-edge),0 2px 4px rgba(0,0,0,.4)}
+#btnPlay,#dock #btnPlay{width:66px;height:66px;background:radial-gradient(circle at 35% 28%,#f8d572,var(--r-butter) 45%,#e3a93a);color:var(--r-ink);
+  box-shadow:0 5px 0 #a96a10,0 10px 14px rgba(0,0,0,.45)}
+#dock #btnPlay:active{background:var(--r-butter);transform:translateY(5px);box-shadow:0 0 0 #a96a10,0 2px 5px rgba(0,0,0,.4)}
+#btnPlay svg{width:28px;height:28px}
+
+/* ---- album sleeve: cream paper jacket ---- */
+.sleeve-gloss{box-shadow:inset 0 0 0 calc(var(--u)*.02) #efe0bd,inset 0 0 0 calc(var(--u)*.0235) rgba(120,70,30,.45),inset 0 0 calc(var(--u)*.05) rgba(70,35,10,.25)}
+.sleeve-fallback{font-family:var(--r-display);color:var(--r-butter);background:linear-gradient(135deg,#c8541c,#6e2c0e);letter-spacing:.2em;text-indent:.2em}
+.ly-line{font-family:var(--r-type);font-weight:400}
+.ly-line.cur{color:var(--r-butter)}
+.ly-scroll.plain .ly-line{font-weight:400}
+.ly-credit,.ly-status{font-family:var(--r-type)}
+
+/* ---- the record: orange pressing label with butter rim ---- */
+.label{color:var(--r-ink);
+  background:radial-gradient(circle closest-side,rgba(255,200,120,.35),transparent 70%),radial-gradient(circle closest-side,#d8651f,#b0451a);
+  box-shadow:inset 0 0 0 calc(var(--u)*.0042) var(--r-butter),inset 0 0 0 calc(var(--u)*.0105) rgba(60,20,0,.35),0 0 0 calc(var(--u)*.022) #040404,0 0 0 calc(var(--u)*.0235) rgba(243,196,79,.25)}
+.ring-text{fill:var(--r-ink);opacity:.9;font-family:var(--r-type)}
+.l-title{font-family:var(--r-display);font-weight:400;color:var(--r-cream);text-shadow:1px 1px 0 rgba(60,20,0,.6)}
+.l-artist{font-family:var(--r-type);font-weight:400;color:var(--r-ink);opacity:1}
+
+/* ---- turntable plinth: walnut plate ---- */
+#plinth{background:var(--r-wood);box-shadow:inset 0 0 0 2px rgba(246,234,208,.28),inset 0 2px 0 rgba(255,220,160,.2),0 calc(var(--u)*.025) calc(var(--u)*.06) rgba(0,0,0,.45)}
+
+/* ---- gate, dialogs, lists: cream paper cards ---- */
+#gate,.modal{background:rgba(26,12,4,.72)}
+.card{background:var(--r-grain),var(--r-paper);color:var(--r-ink);border:3px solid var(--r-ink);border-radius:16px;
+  box-shadow:6px 8px 0 rgba(0,0,0,.5),0 24px 50px rgba(0,0,0,.45);position:relative}
+.card::before{content:"";position:absolute;left:18px;right:18px;top:10px;height:7px;border-radius:4px;background:var(--r-stripes);box-shadow:0 0 0 1px rgba(46,26,16,.35)}
+.card{padding-top:38px}
+.card h1,.card h2{font-family:var(--r-display);font-weight:400;color:var(--r-orange-d);text-shadow:1px 1px 0 rgba(255,244,200,.7)}
+.card h1{font-size:clamp(34px,8vw,46px);letter-spacing:.04em;text-indent:0}
+.tag{font-family:var(--r-type);opacity:.85}
+.fine{opacity:.75}
+.err{color:#a3270f}.warn{color:#7a4a00}
+.mini-vinyl{background:radial-gradient(circle,#f3c44f 0 12%,#c8541c 13% 21%,#0b0b0b 22%),repeating-radial-gradient(circle,#161616 0 2px,#050505 2px 4px);box-shadow:0 4px 0 rgba(0,0,0,.35)}
+.cta{font:400 19px var(--r-display);letter-spacing:.04em;color:var(--r-cream);background:var(--r-orange);border:3px solid var(--r-ink);box-shadow:0 5px 0 var(--r-ink);transition:transform .12s,box-shadow .12s}
+.cta:active{transform:translateY(5px);box-shadow:0 0 0 var(--r-ink)}
+.linkish{font-family:var(--r-type);color:var(--r-ink)}
+.mini{font-family:var(--r-type);color:var(--r-ink);background:var(--r-cream);border:2px solid var(--r-ink);box-shadow:0 3px 0 var(--r-ink)}
+.mini:active{transform:translateY(3px);box-shadow:none}
+#cidInput,#libSearch,#lyPickQ{background:var(--r-cream);color:var(--r-ink);border:2px solid var(--r-ink);border-radius:8px 12px 8px 11px;font-family:var(--r-type);box-shadow:inset 0 2px 4px rgba(60,30,10,.3)}
+#libSearch::placeholder,#lyPickQ::placeholder{color:rgba(46,26,16,.5)}
+.uri code{background:var(--r-cream);color:var(--r-ink);border:1px dashed var(--r-orange)}
+#deviceList li button,#plList li button,#qList li button,#lyPickList li button{color:var(--r-ink);font-family:var(--r-type)}
+#deviceList li button{border:2px solid var(--r-ink);background:var(--r-cream);box-shadow:0 3px 0 var(--r-edge)}
+#deviceList li.active button{background:var(--r-butter);border-color:var(--r-ink)}
+#plList li button:active,#qList li button:active,#lyPickList li button:active{background:rgba(200,84,28,.2)}
+#plList li.now .pl-name,#qList li.now .pl-name,#lyPickList li.now .pl-name{color:var(--r-orange-d)}
+.pl-img,.tr-img{border-radius:3px;box-shadow:0 2px 0 rgba(46,26,16,.5);border:2px solid #efe0bd;outline:1px solid rgba(46,26,16,.4)}
+.pl-name{font-family:var(--r-display);font-weight:400;font-size:16px}
+.pl-actions button{font-family:var(--r-type)!important;color:var(--r-ink)!important;background:var(--r-cream)!important;border:2px solid var(--r-ink)!important;box-shadow:0 3px 0 var(--r-ink)}
+.pl-actions button.primary{background:var(--r-butter)!important}
+
+/* ---- notices and toasts ---- */
+#notice{font-family:var(--r-type);background:var(--r-brown);border:2px dashed var(--r-butter);border-radius:12px;box-shadow:0 5px 0 rgba(0,0,0,.5),0 14px 26px rgba(0,0,0,.4);color:var(--r-cream)}
+#toast{font-family:var(--r-type);background:var(--r-cream);color:var(--r-ink);border:2px solid var(--r-ink);border-radius:8px 12px 8px 11px;box-shadow:3px 4px 0 rgba(0,0,0,.5);rotate:-1deg}
+#toast.bad{border-color:var(--r-orange-d);color:#8a2a0a}
+
+/* dark mode keeps the cream paper, just a touch dimmer */
+body.dark .card{background:var(--r-grain),#d6bf8c}
+body.dark .cap,body.dark .progress{opacity:.95}
+@media (max-width:520px){
+  #dock{padding:18px 14px 12px}
+  .btns{gap:12px}
+  .tools{padding:3px 4px}
+  .tools button.icon.sm{width:36px;height:36px}
+}
+@media (max-width:760px){
+  #top{flex-direction:column;align-items:flex-start;gap:12px}
+  .tools{align-self:stretch;justify-content:space-between}
+  .tools button.icon.sm{width:34px;height:34px}
+  .tools button.icon.sm svg{width:19px;height:19px}
+}
