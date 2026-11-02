@@ -692,3 +692,6 @@ body.dark .grain{opacity:.09}
 .rr-spot{position:fixed;inset:0;z-index:3;pointer-events:none;opacity:0;background:rgba(8,4,2,.34)}
 #record{transition:transform .6s cubic-bezier(.3,.8,.3,1),opacity .55s ease,scale .55s ease}
 body.launching #record{opacity:0;scale:.95}
+
+html{background-color:#2a1a10}
+body{background:transparent}

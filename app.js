@@ -391,26 +391,30 @@ function setBackground(p) {
   const A = $('bgA'), B = $('bgB'), next = S.bgOn === 'A' ? B : A, prev = S.bgOn === 'A' ? A : B;
   next.style.background = bgCss(p); next.classList.add('on'); prev.classList.remove('on');
   S.bgOn = S.bgOn === 'A' ? 'B' : 'A';
+  const root = document.documentElement.style;                       // the page canvas carries the same colours, so the strips iPadOS paints outside the viewport (status bar / home bar) match
+  root.backgroundColor = 'rgb(' + p.M.map(Math.round).join(',') + ')'; root.backgroundImage = bgCss(p);
+  root.backgroundRepeat = 'no-repeat'; root.backgroundSize = '100% calc(100% + 240px)'; root.backgroundPosition = '0 -120px';
   const meta = document.querySelector('meta[name=theme-color]');
-  if (meta) meta.content = 'rgb(' + p.D.map(Math.round).join(',') + ')';
+  if (meta) meta.content = 'rgb(' + p.M.map(Math.round).join(',') + ')';
 }
 
 /* ---------- track change: lift arm, slide record, swap, drop arm ---------- */
 async function changeTrack(t) {
   const first = !S.trackId, my = ++S.seq;
+  const quiet = !!S.quiet && (S.quiet === t.id || S.quiet === '*'); if (quiet) S.quiet = null;   // the Record Room already placed this record: no second lift-and-swap
   S.trackId = t.id;
   rrOnTrack();
   let loaded = null;
   if (t.art) { try { loaded = await loadImage(t.art); } catch { loaded = null; } }
   if (my !== S.seq) return;
   const stage = $('stage');
-  if (!first) { stage.classList.add('changing'); S.lifted = true; renderArm(); await sleep(550); if (my !== S.seq) return; }
+  if (!first && !quiet) { stage.classList.add('changing'); S.lifted = true; renderArm(); await sleep(550); if (my !== S.seq) return; }
   setLabel(t); rrSync();
   lyOnTrack(t);
   if (Q.open) loadQueue();
   setSleeve(loaded ? t.art : null, loaded ? loaded.cors : false);
   setBackground(loaded && loaded.cors ? paletteFrom(loaded.img) : null);
-  if (!first) {
+  if (!first && !quiet) {
     stage.classList.remove('changing');
     await sleep(900); if (my !== S.seq) return;
   }
@@ -1120,12 +1124,10 @@ async function rrLaunch(fromEl, trackId, run, info) {
       const room = card.getBoundingClientRect().top - $('rrBody').getBoundingClientRect().top - 6, size = fromEl.getBoundingClientRect().width || 150;
       pull = Math.max(0.3, Math.min(0.8, room / size)); card.style.setProperty('--pull', pull); card.classList.add('pulling');
     }
-    const t0 = performance.now();
-    const ok = await run();
-    if (ok !== true) { if (card) card.classList.remove('pulling'); return; }
-    const wait = 580 - (performance.now() - t0); if (wait > 0) await sleep(wait);
+    if (S.isPlaying) control('pause');                                // the song only plays while the tonearm is on the record: it comes off now, so the old song stops
+    await sleep(580);
     const r = fromEl.getBoundingClientRect();
-    rrFly(r.width ? { left: r.left, top: r.top, width: r.width, height: r.height } : null, trackId, card, card ? pull : 1, info);
+    await rrFly(r.width ? { left: r.left, top: r.top, width: r.width, height: r.height } : null, trackId, card, card ? pull : 1, info, run);
   } finally { rrBusy = false; }
 }
 function fillLabel(root, t) {                                         // same text and sizing rules as the real record's label
@@ -1134,17 +1136,11 @@ function fillLabel(root, t) {                                         // same te
   root.querySelector('.l-artist span').textContent = t.artists || '';
   const alb = (t.album || '').toUpperCase(), tp = root.querySelectorAll('textPath')[1]; if (tp) tp.textContent = alb.length > 30 ? alb.slice(0, 29) + '…' : alb;
 }
-async function rrWaitSwap(id, prev) {                                  // until the real record shows the new song
-  for (let i = 0; i < 30 && (id ? S.trackId !== id : S.trackId === prev); i++) await sleep(100);
-  await sleep(250);
-  for (let i = 0; i < 40 && $('stage').classList.contains('changing'); i++) await sleep(100);
-}
-function rrFly(r0, trackId, card, pull, info) {
+function rrFly(r0, trackId, card, pull, info, run) {   // resolves when the song has been started (or the attempt failed)
   rrClose();                                                          // 2. the drawer slides shut ...
   const st = $('stage'), rec = $('record'), disc = $('disc');
   const tidy = () => { if (card) card.classList.remove('pulling', 'gone'); };
-  if (!r0 || !st.offsetWidth || !st.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return setTimeout(tidy, 700);
-  const prevId = S.trackId;
+  if (!r0 || !st.offsetWidth || !st.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) { setTimeout(tidy, 700); return run(); }
   const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
   const S1 = rec.offsetWidth;                                         // the real record's size and spot (layout values: unaffected by the stage zoom while the drawer closes)
   const cx1 = (vw - st.offsetWidth) / 2 + rec.offsetLeft + S1 / 2, cy1 = (vh - st.offsetHeight) / 2 + rec.offsetTop + S1 / 2;
@@ -1186,20 +1182,27 @@ function rrFly(r0, trackId, card, pull, info) {
     { transform: dy(0.015) + ' scale(1.03)', opacity: 0.55, offset: 1 },
   ], { duration: D, fill: 'forwards' });
   orange.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 650, delay: 300, fill: 'forwards', easing: 'ease' });   // the cabinet's orange label turns into NEEDLE's gold one
-  let released = false;
-  const release = async () => {
-    if (released) return; released = true;
-    try { const real = disc.getAnimations().find((x) => x.animationName === 'spin'), mine = fd.getAnimations()[0]; if (real && mine) { mine.currentTime = real.currentTime; if (real.playState === 'paused') mine.pause(); fd.style.rotate = getComputedStyle(disc).rotate === 'none' ? '' : getComputedStyle(disc).rotate; } } catch { /* ignore */ }
-    if (!trackId && S.track) fillLabel(fd, { name: S.track.title, artists: S.track.artists, album: S.track.album });
-    spot.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 600, fill: 'forwards', easing: 'ease-in' }).onfinish = () => spot.remove();
-    document.body.classList.remove('launching');                      // the real record fades back in as the copy fades out: they look identical
-    el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 420, fill: 'forwards', easing: 'ease-in-out' }).onfinish = () => el.remove();
-    await sleep(380);
-    S.launching = false; renderArm(); tidy();                         // 5. last of all, the tonearm lowers onto the record
-  };
-  a.onfinish = async () => { await rrWaitSwap(trackId, prevId); release(); };
-  a.oncancel = release;
-  setTimeout(release, 10000);                                         // never leave the turntable stuck
+  return new Promise((resolve) => {
+    let released = false;
+    const release = async () => {
+      if (released) return; released = true;
+      try { const real = disc.getAnimations().find((x) => x.animationName === 'spin'), mine = fd.getAnimations()[0]; if (real && mine) { mine.currentTime = real.currentTime; if (real.playState === 'paused') mine.pause(); fd.style.rotate = getComputedStyle(disc).rotate === 'none' ? '' : getComputedStyle(disc).rotate; } } catch { /* ignore */ }
+      if (track) { setLabel({ title: track.name, artists: track.artists, album: track.album }); if (track.dur) S.duration = track.dur; }   // the real record already carries the new label, so the swap is invisible
+      S.progress = 0; S.syncedAt = performance.now(); S.quiet = trackId || '*'; setTimeout(() => { S.quiet = null; }, 9000);
+      spot.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 600, fill: 'forwards', easing: 'ease-in' }).onfinish = () => spot.remove();
+      document.body.classList.remove('launching');                    // the real record fades back in as the copy fades out: they look identical
+      el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 420, fill: 'forwards', easing: 'ease-in-out' }).onfinish = () => el.remove();
+      await sleep(380);
+      S.armDown = true; S.launching = false; renderArm(); tidy();     // 5. the tonearm lowers onto the record ...
+      await sleep(950);                                               //    ... and only when its needle is about to touch the groove does the song start
+      const ok = await run();
+      if (ok === true) { S.isPlaying = true; S.syncedAt = performance.now(); }
+      S.armDown = false; renderPlaying();                             // playing: the arm stays down. Refused: it goes back to rest
+      resolve();
+    };
+    a.onfinish = release; a.oncancel = release;
+    setTimeout(release, 10000);                                       // never leave the turntable stuck
+  });
 }
 function rrSync() {                                       // mark what is spinning now; cheap, runs on every player update
   const room = $('room'); if (!RR.open) return;
