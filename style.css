@@ -851,3 +851,4 @@ body.retro #menu button.icon.sm[aria-pressed="true"]::after{background:var(--r-b
 body.retro #btnMenu[aria-expanded="true"],body.retro #btnMenu.on{background:var(--r-butter);color:var(--r-ink);box-shadow:inset 0 2px 3px rgba(90,50,0,.35)}
 @media (prefers-reduced-motion:reduce){#menu{animation:none}#btnMenu{transition:none}}
 #btnMenu svg{width:26px;height:26px}
+#menu .menu-ver{padding:8px 12px 4px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;opacity:.5;text-align:center}
