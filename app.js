@@ -1415,7 +1415,7 @@ function showGate({ error, keepTokens } = {}) {
 function hideGate() { $('gate').classList.remove('show'); }
 
 function setAmbient(on) {
-  document.body.classList.toggle('ambient', on); document.body.classList.remove('peek'); fitScene();
+  document.body.classList.toggle('ambient', on); document.body.classList.remove('peek'); if (window.closeNeedleMenu) closeNeedleMenu(); fitScene();
   store.set(K.ambient, on ? '1' : '0');
 }
 let peekT;
@@ -1799,6 +1799,17 @@ function bind() {
   if ($('btnTheme')) $('btnTheme').onclick = toggleTheme;
   if ($('btnStyle')) $('btnStyle').onclick = () => applyStyle(!document.body.classList.contains('retro'), true);
   { const mq = matchMedia('(prefers-color-scheme: dark)'); (mq.addEventListener ? mq.addEventListener('change', applyTheme) : mq.addListener(applyTheme)); }
+  /* settings menu: one gear button lists every option */
+  const menu = $('menu'), gear = $('btnMenu');
+  const setMenu = (on) => { menu.hidden = !on; gear.setAttribute('aria-expanded', String(on)); gear.classList.toggle('on', on); if (on) { const f = menu.querySelector('button:not([hidden])'); if (f && document.activeElement === gear) { /* keep focus on the gear for touch; keyboard users arrow in */ } } else if (document.activeElement && menu.contains(document.activeElement)) gear.focus({ preventScroll: true }); };
+  gear.onclick = (e) => { e.stopPropagation(); setMenu(menu.hidden); };
+  menu.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b && !b.hasAttribute('aria-pressed')) setTimeout(() => setMenu(false), 60); });   // actions close the menu, switches (sounds, dark, look) stay open so you see them change
+  document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !e.target.closest('.tools')) setMenu(false); });
+  menu.addEventListener('keydown', (e) => {
+    const list = [...menu.querySelectorAll('button:not([hidden])')], i = list.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); list[(i + 1) % list.length].focus(); } else if (e.key === 'ArrowUp') { e.preventDefault(); list[(i - 1 + list.length) % list.length].focus(); }
+  });
+  window.closeNeedleMenu = () => setMenu(false);
   $('btnQueue').onclick = openQueue;
   $('btnQueueClose').onclick = closeQueue;
   bindTurntable(); bindLocal();
@@ -1829,6 +1840,7 @@ function bind() {
     if (RR.open && e.key !== 'Escape' && e.key !== 'p' && e.key !== 'P') return;   // the Record Room is modal: its own buttons handle keys
     if (e.code === 'Space') { e.preventDefault(); control(S.isPlaying ? 'pause' : 'play'); }
     else if (e.key === 'q' || e.key === 'Q') openQueue();
+    else if (e.key === 'Escape' && !$('menu').hidden) closeNeedleMenu();
     else if (e.key === 'Escape') { if (!$('devicesModal').hidden || !$('queueModal').hidden || !$('lyPickModal').hidden) { closeLyPick(); closeQueue(); $('devicesModal').hidden = true; WAIT.ctx = null; } else if (!rrEscape()) { /* nothing open */ } }
     else if (e.key === 'p' || e.key === 'P') (RR.open ? rrClose() : rrOpen());
     else if (e.key === 's' || e.key === 'S') setSfx(!SFX.on);
