@@ -697,6 +697,92 @@ html{background-color:#2a1a10}
 body{background:transparent}
 
 /* =====================================================================
+   Record Room · CLASSIC look: the same drawer, but in NEEDLE's original minimal style
+   (dark glass, cream type, gold accents, system font). Retro keeps the record-shop cabinet.
+   ===================================================================== */
+body:not(.retro) .room,body:not(.retro) .room[data-theme]{
+  --rr-orange:#d9bb74; --rr-orange-d:#e8c874; --rr-butter:#d9bb74; --rr-cream:#f0e3c7; --rr-ink:#f0e3c7;
+  --rr-paper:#17100a; --rr-paper-d:#100a06; --rr-hi:#17100a; --rr-brown:#120b07; --rr-brown-2:#1b120c;
+  --rr-art-bg:#3a2a1f; --rr-line:rgba(240,227,199,.14); --rr-btn-edge:transparent; --rr-sleeve-b:#2a1e15; --rr-card-edge:rgba(240,227,199,.12);
+  --rr-grain:linear-gradient(transparent,transparent);
+  --rr-display:"Avenir Next","SF Pro Display",-apple-system,"Helvetica Neue",Inter,system-ui,sans-serif;
+  --rr-type:"Avenir Next","SF Pro Display",-apple-system,"Helvetica Neue",Inter,system-ui,sans-serif;
+  color-scheme:dark;
+}
+body:not(.retro) .room .rr-scrim{background:rgba(8,4,2,.55)}
+body:not(.retro) .room .rr-panel{background:#120b07;border-radius:22px 0 0 22px;box-shadow:-18px 0 50px rgba(0,0,0,.5),0 0 0 1px rgba(240,227,199,.1) inset}
+body:not(.retro) .room .rr-head{background:#17100a;box-shadow:0 1px 0 rgba(240,227,199,.1)}
+body:not(.retro) .room .rr-plate{padding:0;background:none;box-shadow:none;transform:none;color:var(--rr-cream);border-radius:0}
+body:not(.retro) .room .rr-plate::before,body:not(.retro) .room .rr-plate::after{display:none}
+body:not(.retro) .room .rr-plate h2{font:600 clamp(15px,2vw,20px)/1.1 var(--rr-display);letter-spacing:.34em;text-transform:uppercase;text-shadow:none}
+body:not(.retro) .room .rr-plate p{font:400 11.5px/1.2 var(--rr-type);letter-spacing:.16em;opacity:.6;text-transform:uppercase}
+body:not(.retro) .room .rr-stamp{display:none}
+body:not(.retro) .room .rr-tag{background:rgba(240,227,199,.08);border:1px solid rgba(240,227,199,.14);color:var(--rr-cream);border-radius:999px;box-shadow:none;transform:none;padding:7px 13px;font:400 12.5px/1 var(--rr-type);letter-spacing:.02em}
+body:not(.retro) .room .rr-tag:nth-child(2){transform:none}
+body:not(.retro) .room .rr-tag b{font:600 13px var(--rr-type);color:#d9bb74}
+body:not(.retro) .room .rr-round{background:rgba(240,227,199,.1);color:var(--rr-cream);border:1px solid rgba(240,227,199,.16);box-shadow:none;transition:background .2s,transform .15s}
+body:not(.retro) .room .rr-round:active{background:rgba(240,227,199,.22);transform:scale(.94);box-shadow:none}
+body:not(.retro) .room .rr-round.hot{background:var(--rr-cream);color:#2a1a10;border-color:var(--rr-cream);box-shadow:none}
+body:not(.retro) .room .rr-search input{font:400 16px var(--rr-type);color:var(--rr-cream);background:rgba(0,0,0,.35);border:1px solid rgba(240,227,199,.25);border-radius:12px;box-shadow:none;padding:12px 16px}
+body:not(.retro) .room .rr-search input:focus{border-color:var(--rr-cream);box-shadow:0 0 0 2px rgba(240,227,199,.2)}
+body:not(.retro) .room .rr-search input::placeholder{color:rgba(240,227,199,.45)}
+body:not(.retro) .room .rr-tabs{background:#17100a;padding:10px 18px 10px 22px;gap:4px;border-bottom:1px solid rgba(240,227,199,.08)}
+body:not(.retro) .room .rr-tabs button{background:transparent;color:rgba(240,227,199,.62);border-radius:999px;box-shadow:none;transform:none;min-height:42px;padding:9px 16px;font:500 13.5px/1 var(--rr-type);letter-spacing:.01em;text-transform:none;transition:background .2s,color .2s}
+body:not(.retro) .room .rr-tabs button:nth-child(even){background:transparent;border-radius:999px}
+body:not(.retro) .room .rr-tabs button:hover{transform:none;color:var(--rr-cream);background:rgba(240,227,199,.07)}
+body:not(.retro) .room .rr-tabs button[aria-selected="true"]{background:rgba(240,227,199,.15);color:var(--rr-cream);padding:9px 16px;margin:0;box-shadow:none}
+body:not(.retro) .room .rr-tabs button[aria-selected="true"] svg{color:#d9bb74}
+body:not(.retro) .room .rr-tabs button:focus-visible,body:not(.retro) .room .rr-pill:focus-visible,body:not(.retro) .room .rr-round:focus-visible,body:not(.retro) .room .rr-card button:focus-visible{outline:2px solid var(--rr-cream);outline-offset:2px}
+body:not(.retro) .room .rr-bar{background:#120b07;color:var(--rr-cream);border-bottom:1px solid rgba(240,227,199,.1)}
+body:not(.retro) .room .rr-crumb b{font:600 clamp(17px,2.2vw,21px)/1.1 var(--rr-display);color:var(--rr-cream)}
+body:not(.retro) .room .rr-crumb span{font:400 12.5px var(--rr-type);opacity:.55}
+body:not(.retro) .room .rr-pill{background:rgba(240,227,199,.1);color:var(--rr-cream);border:1px solid rgba(240,227,199,.25);box-shadow:none;font:500 13.5px/1 var(--rr-type);letter-spacing:.01em;transition:background .2s,transform .15s}
+body:not(.retro) .room .rr-pill:active{transform:scale(.97);box-shadow:none;background:rgba(240,227,199,.22)}
+body:not(.retro) .room .rr-pill.hot{background:var(--rr-cream);color:#2a1a10;border-color:var(--rr-cream)}
+body:not(.retro) .room .rr-body{background:#120b07;color:var(--rr-cream)}
+body:not(.retro) .room .rr-card.tilt{rotate:0deg}
+body:not(.retro) .room .rr-front{padding:0;border-radius:6px;background:#2a1e15;box-shadow:0 10px 22px -6px rgba(0,0,0,.6),0 0 0 1px rgba(240,227,199,.1)}
+body:not(.retro) .room .rr-front::before{display:none}
+body:not(.retro) .room .rr-art{border-radius:6px}
+body:not(.retro) .room .rr-art::after{display:none}
+body:not(.retro) .room .rr-noart{background:linear-gradient(135deg,#6b4a30,#2a1b12);color:rgba(240,227,199,.55)}
+body:not(.retro) .room .rr-disc::after{background:radial-gradient(circle,#0b0907 0 9%,#241b12 10% 100%);box-shadow:0 0 0 1.5px rgba(217,187,116,.75)}
+body:not(.retro) .room .rr-cat{background:rgba(10,6,3,.7);font:500 9.5px/1 var(--rr-type);letter-spacing:.1em;border-radius:999px;padding:4px 7px 3px}
+body:not(.retro) .room .rr-card[data-st]::after{display:none}
+body:not(.retro) .room .rr-go{right:8px;bottom:auto;top:calc(100% - 52px);width:40px;height:40px;background:var(--rr-cream);color:#2a1a10;border:0;box-shadow:0 6px 14px rgba(0,0,0,.5)}
+body:not(.retro) .room .rr-card.album .rr-go,body:not(.retro) .room .rr-card.playlist .rr-go{top:auto}
+body:not(.retro) .room .rr-go:hover{transform:scale(1.08)}
+body:not(.retro) .room .rr-go:active{transform:scale(.94);box-shadow:0 2px 6px rgba(0,0,0,.5)}
+body:not(.retro) .room .rr-meta .t{font:600 14.5px/1.25 var(--rr-display);color:var(--rr-cream)}
+body:not(.retro) .room .rr-meta .a{font:400 12.5px/1.25 var(--rr-type);color:rgba(240,227,199,.65)}
+body:not(.retro) .room .rr-meta .al{font:400 11.5px/1.25 var(--rr-type);opacity:.45}
+body:not(.retro) .room .rr-card.playlist .rr-front,body:not(.retro) .room .rr-card.album .rr-front{box-shadow:4px -4px 0 -1px #2a1e15,4px -4px 0 0 rgba(240,227,199,.12),0 10px 22px -6px rgba(0,0,0,.6)}
+body:not(.retro) .room .rr-card.now .rr-front{box-shadow:0 0 0 2px #d9bb74,0 12px 24px -6px rgba(0,0,0,.7)}
+body:not(.retro) .room .rr-eq{background:#d9bb74;border-radius:999px}
+body:not(.retro) .room .rr-eq i{background:#2a1a10}
+body:not(.retro) .room .rr-card.now .rr-meta .t{color:#e8c874}
+body:not(.retro) .room .rr-msg h3{font:600 20px/1.2 var(--rr-display);color:var(--rr-cream);letter-spacing:0}
+body:not(.retro) .room .rr-msg p,body:not(.retro) .room .rr-more{font-family:var(--rr-type);color:var(--rr-cream);opacity:.8}
+body:not(.retro) .room .rr-spin{background:radial-gradient(circle,#0b0907 0 7%,#d9bb74 8% 30%,transparent 31%),repeating-radial-gradient(circle,#1b1511 0 1.5px,#0a0807 1.5px 3px);box-shadow:0 4px 12px rgba(0,0,0,.5)}
+body:not(.retro) .room .rr-ill{stroke:var(--rr-cream)}
+body:not(.retro) .room .rr-ill .a{fill:#2a1e15}body:not(.retro) .room .rr-ill .b{fill:#17100a}body:not(.retro) .room .rr-ill .d{fill:#d9bb74}body:not(.retro) .room .rr-ill .e{stroke:#d9bb74}
+body:not(.retro) .room .rr-now{background:#17100a;box-shadow:0 -1px 0 rgba(240,227,199,.1);padding-bottom:calc(env(safe-area-inset-bottom) + 9px)}
+body:not(.retro) .room .rr-now-t .lbl{font:500 10px var(--rr-type);letter-spacing:.2em;color:#d9bb74}
+body:not(.retro) .room .rr-now-t b{font:600 15px/1.2 var(--rr-display)}
+body:not(.retro) .room .rr-now-t span:last-child{font-family:var(--rr-type)}
+body:not(.retro) .room .rr-detail{background:#120b07;color:var(--rr-cream)}
+body:not(.retro) .room .rr-d-art{padding:0;transform:none;border-radius:10px;background:none;box-shadow:0 20px 40px -10px rgba(0,0,0,.7),0 0 0 1px rgba(240,227,199,.1)}
+body:not(.retro) .room .rr-d-art img{border-radius:10px}
+body:not(.retro) .room .rr-d-cat{font:500 11px var(--rr-type);letter-spacing:.22em;color:#d9bb74}
+body:not(.retro) .room .rr-d-info h3{font:700 clamp(24px,3.6vw,36px)/1.1 var(--rr-display);color:var(--rr-cream)}
+body:not(.retro) .room .rr-d-artist{font:400 16px var(--rr-type);color:rgba(240,227,199,.7)}
+body:not(.retro) .room .rr-d-info dl{font-family:var(--rr-type)}
+body:not(.retro) .rr-fly .o{display:none}
+body:not(.retro) .room .rr-grid{padding-top:34px}
+body:not(.retro) .room .rr-pill.hot,body:not(.retro) .room[data-theme] .rr-pill.hot{background:var(--rr-cream);color:#2a1a10;border-color:var(--rr-cream);opacity:1}
+body:not(.retro) .room .rr-pill.hot[disabled]{opacity:.55}
+
+/* =====================================================================
    RETRO — the whole app wears the Record Room's 1970s record-shop look:
    burnt orange, butter, cream paper, espresso wood, Shrikhand + typewriter type.
    ===================================================================== */
