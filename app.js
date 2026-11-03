@@ -13,7 +13,7 @@ const OPT_SCOPES = ['user-read-recently-played'];       // asked for at login, b
 const SCOPES = NEED_SCOPES.concat(OPT_SCOPES).join(' ');
 const API = 'https://api.spotify.com/v1';
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
-const K = { tokens: 'needle.tokens', verifier: 'needle.verifier', state: 'needle.state', cid: 'needle.clientId', ambient: 'needle.ambient', lyrics: 'needle.lyrics', local: 'needle.local', sfx: 'needle.sfx', theme: 'needle.theme' };
+const K = { tokens: 'needle.tokens', verifier: 'needle.verifier', state: 'needle.state', cid: 'needle.clientId', ambient: 'needle.ambient', lyrics: 'needle.lyrics', local: 'needle.local', sfx: 'needle.sfx', theme: 'needle.theme', style: 'needle.style' };
 
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -383,6 +383,12 @@ function applyTheme() {
   for (const id of ['btnTheme']) { const b = $(id); if (!b) continue; b.setAttribute('aria-pressed', dark); b.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode'); b.title = dark ? 'Light mode' : 'Dark mode'; }
   setBackground(curPal);
 }
+function applyStyle(retro, save) {
+  document.body.classList.toggle('retro', retro);
+  const b = $('btnStyle'); if (b) { b.setAttribute('aria-pressed', String(retro)); b.setAttribute('aria-label', retro ? 'Switch to the classic look' : 'Switch to the retro look'); b.title = retro ? 'Classic look' : 'Retro look'; }
+  if (save) store.set(K.style, retro ? 'retro' : 'classic');
+  fitScene(); requestAnimationFrame(fitScene); setTimeout(fitScene, 400);
+}
 function toggleTheme() { store.set(K.theme, themeNow() === 'dark' ? 'light' : 'dark'); applyTheme(); }
 function setBackground(p) {
   curPal = p || null;
@@ -392,8 +398,10 @@ function setBackground(p) {
   next.style.background = bgCss(p); next.classList.add('on'); prev.classList.remove('on');
   S.bgOn = S.bgOn === 'A' ? 'B' : 'A';
   const root = document.documentElement.style;                       // the page canvas carries the same colours, so the strips iPadOS paints outside the viewport (status bar / home bar) match
-  root.backgroundColor = 'rgb(' + p.M.map(Math.round).join(',') + ')'; root.backgroundImage = bgCss(p);
-  root.backgroundRepeat = 'no-repeat'; root.backgroundSize = '100% calc(100% + 240px)'; root.backgroundPosition = '0 -120px';
+  const c3 = (a) => 'rgb(' + a.map(Math.round).join(',') + ')';
+  root.backgroundColor = c3(p.D);                                     // purely horizontal gradient that repeats downwards: whatever strip iPadOS paints outside the page matches the edges of the scene
+  root.backgroundImage = 'linear-gradient(90deg,' + c3(p.L) + ' 0%,' + c3(p.M) + ' 38%,' + c3(p.D) + ' 72%,' + c3(p.M) + ' 100%)';
+  root.backgroundRepeat = 'repeat-y'; root.backgroundSize = '100% 100vh'; root.backgroundPosition = '0 0';
   const meta = document.querySelector('meta[name=theme-color]');
   if (meta) meta.content = 'rgb(' + p.M.map(Math.round).join(',') + ')';
 }
@@ -772,6 +780,12 @@ function closeQueue() { $('queueModal').hidden = true; Q.open = false; }
 function queueMsg(text) {
   const l = $('qList'); l.innerHTML = '';
   const li = document.createElement('li'); li.className = 'empty'; li.textContent = text; l.appendChild(li);
+}
+function normTrack(t) {                                   // a Spotify track/episode object -> what the queue rows show
+  if (!t || !t.name) return null;
+  const imgs = ((t.album && t.album.images) || (t.images) || []).slice().sort((x, y) => (x.width || 0) - (y.width || 0));
+  const im = imgs.find((i) => (i.width || 0) >= 64) || imgs[imgs.length - 1];
+  return { id: t.id || t.uri || t.name, name: t.name, artists: (t.artists || []).map((x) => x.name).filter(Boolean).join(', ') || (t.show && t.show.name) || '', dur: t.duration_ms || 0, img: im ? im.url : '' };
 }
 async function loadQueue() {
   if (Q.loading) return;
@@ -1164,7 +1178,7 @@ function rrFly(r0, trackId, card, pull, info, run) {   // resolves when the song
   if (!r0 || !st.offsetWidth || !st.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) { setTimeout(tidy, 700); return run(); }
   const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
   const S1 = rec.offsetWidth;                                         // the real record's size and spot (layout values: unaffected by the stage zoom while the drawer closes)
-  const cx1 = (vw - st.offsetWidth) / 2 + rec.offsetLeft + S1 / 2, cy1 = (vh - st.offsetHeight) / 2 + rec.offsetTop + S1 / 2;
+  const F = FIT(), cx1 = vw / 2 + ((rec.offsetLeft + S1 / 2) - st.offsetWidth / 2) * F.s, cy1 = vh / 2 + F.dy + ((rec.offsetTop + S1 / 2) - st.offsetHeight / 2) * F.s;   // where the (scaled) real record sits
   const cx0 = r0.left + r0.width / 2, cy0 = r0.top + r0.height / 2, k0 = Math.max(0.14, Math.min(r0.width, r0.height) / S1);
   const hx = vw / 2, hy = vh / 2 - S1 * 0.02, hk = Math.min(0.95, Math.min(vw, vh) * 0.8 / S1);   // the "show it to the room" spot: centre of the screen
   document.body.classList.add('launching'); S.launching = true; renderArm();   // ... the old record is lifted off and the tonearm swings back to rest
@@ -1189,9 +1203,9 @@ function rrFly(r0, trackId, card, pull, info, run) {   // resolves when the song
     { transform: T(cx0, cy0, k0), offset: 0, easing: EO },
     { transform: T(hx, hy, hk), offset: 0.3, easing: 'ease-in-out' },                                    // 3. shown to the screen
     { transform: T(hx, hy - S1 * 0.012, hk * 1.025), offset: 0.52, easing: IO },                          //    a gentle hover
-    { transform: T(cx1, cy1, 1.07), offset: 0.85, easing: 'cubic-bezier(.3,.7,.3,1)' },                  // 4. glides over the platter
-    { transform: T(cx1, cy1, 0.992), offset: 0.95, easing: 'ease-out' },                                  //    set down ...
-    { transform: T(cx1, cy1, 1), offset: 1 },                                                              //    ... and settled
+    { transform: T(cx1, cy1, 1.07 * F.s), offset: 0.85, easing: 'cubic-bezier(.3,.7,.3,1)' },                  // 4. glides over the platter
+    { transform: T(cx1, cy1, 0.992 * F.s), offset: 0.95, easing: 'ease-out' },                                  //    set down ...
+    { transform: T(cx1, cy1, F.s), offset: 1 },                                                              //    ... and settled
   ], { duration: D, fill: 'forwards' });
   const dy = (f) => 'translateY(' + Math.round(S1 * f) + 'px)';
   drop.animate([                                                                                          // the shadow is far and soft while the record is held up, tight once it is down
@@ -1401,7 +1415,7 @@ function showGate({ error, keepTokens } = {}) {
 function hideGate() { $('gate').classList.remove('show'); }
 
 function setAmbient(on) {
-  document.body.classList.toggle('ambient', on); document.body.classList.remove('peek');
+  document.body.classList.toggle('ambient', on); document.body.classList.remove('peek'); fitScene();
   store.set(K.ambient, on ? '1' : '0');
 }
 let peekT;
@@ -1422,7 +1436,24 @@ const FS_HINT = 'For true full screen on iPhone: tap Share, then Add to Home Scr
 function setViewportVars() {                                 // size the scene from the real visible area (fixes stale units on iOS and after fullscreen)
   const vv = window.visualViewport, w = (vv && vv.width) || innerWidth, h = (vv && vv.height) || innerHeight;
   const r = document.documentElement.style; r.setProperty('--vw', (w / 100) + 'px'); r.setProperty('--vh', (h / 100) + 'px');
+  fitScene();
 }
+/* The scene is a fixed drawing; when the top bar and the player panel would cover it (short or small screens) it is
+   scaled down and nudged with transforms (cheap, animatable) so the record always sits between them. */
+function fitScene() {
+  const st = $('stage'), rec = $('record'), top = $('top'), dock = $('dock'), r = document.documentElement.style;
+  if (!st || !rec || !st.offsetWidth) return;
+  const vv = window.visualViewport, h = (vv && vv.height) || innerHeight;
+  if (document.body.classList.contains('ambient') || !top.offsetHeight) { r.setProperty('--fit', 1); r.setProperty('--fy', '0px'); return; }
+  const gap = 10, T = top.getBoundingClientRect().bottom + gap, B = dock.getBoundingClientRect().top - gap;
+  const sTop = h / 2 - st.offsetHeight / 2, sl = $('sleeve');
+  const ct = sTop + Math.min(rec.offsetTop, sl ? sl.offsetTop : 1e9), cb = sTop + rec.offsetTop + rec.offsetHeight, mid = h / 2;
+  const s = Math.max(0.5, Math.min(1, (B - T) / (cb - ct)));
+  let dy = 0; const t2 = mid + (ct - mid) * s, b2 = mid + (cb - mid) * s;
+  if (b2 > B) dy = B - b2; if (t2 + dy < T) dy = T - t2;
+  r.setProperty('--fit', s.toFixed(4)); r.setProperty('--fy', Math.round(dy) + 'px');
+}
+const FIT = () => { const cs = getComputedStyle(document.documentElement); return { s: parseFloat(cs.getPropertyValue('--fit')) || 1, dy: parseFloat(cs.getPropertyValue('--fy')) || 0 }; };
 function toggleFullscreen() {
   const el = document.documentElement;
   if (document.fullscreenElement || document.webkitFullscreenElement) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
@@ -1766,6 +1797,7 @@ function bind() {
   $('btnDevicesClose').onclick = () => { $('devicesModal').hidden = true; WAIT.ctx = null; };
   bindRoom();
   if ($('btnTheme')) $('btnTheme').onclick = toggleTheme;
+  if ($('btnStyle')) $('btnStyle').onclick = () => applyStyle(!document.body.classList.contains('retro'), true);
   { const mq = matchMedia('(prefers-color-scheme: dark)'); (mq.addEventListener ? mq.addEventListener('change', applyTheme) : mq.addListener(applyTheme)); }
   $('btnQueue').onclick = openQueue;
   $('btnQueueClose').onclick = closeQueue;
@@ -1819,6 +1851,8 @@ async function init() {
   if (store.get(K.ambient) === '1') document.body.classList.add('ambient');
   if (store.get(K.lyrics) === '1') setLyrics(true);
   applyTheme();
+  applyStyle(document.body.classList.contains('retro'), false);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitScene);
   setLabel({ title: 'NEEDLE', artists: 'Connect · Play · Spin', album: '' });
   if (new URLSearchParams(location.search).has('demo')) return startDemo();
   try { await handleCallback(); }
