@@ -4,7 +4,7 @@
   "description": "A full-screen vinyl record player for your Spotify.",
   "start_url": "./",
   "scope": "./",
-  "display": "fullscreen",
+  "display": "standalone",
   "orientation": "any",
   "background_color": "#2a1a10",
   "theme_color": "#2a1a10",

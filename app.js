@@ -9,7 +9,7 @@
 
 const CFG = Object.assign({ CLIENT_ID: '', POLL_PLAYING_MS: 3000, POLL_PAUSED_MS: 6000 }, window.NEEDLE_CONFIG || {});
 const NEED_SCOPES = ['user-read-playback-state', 'user-modify-playback-state', 'playlist-read-private', 'playlist-read-collaborative', 'user-library-read', 'streaming', 'user-read-email', 'user-read-private'];
-const OPT_SCOPES = ['user-read-recently-played'];       // asked for at login, but the app works without it (only the Recently Played shelf needs it)
+const OPT_SCOPES = ['user-read-recently-played', 'user-library-modify'];       // asked for at login, but the app works without it (only the Recently Played shelf needs it)
 const SCOPES = NEED_SCOPES.concat(OPT_SCOPES).join(' ');
 const API = 'https://api.spotify.com/v1';
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
@@ -218,6 +218,7 @@ function applyPlayer(p) {
   if (!p.item) return setIdle();
   const t = normalize(p.item);
   S.device = p.device || null;
+  S.shuffle = !!p.shuffle_state; S.repeat = p.repeat_state || 'off'; if (p.device && typeof p.device.volume_percent === 'number') S.volume = p.device.volume_percent; extrasSync();
   S.ctxUri = (p.context && p.context.uri) || null;
   if (MUTE.on && p.is_playing && !MUTE.retried) { MUTE.retried = true; musicPause().catch(() => {}); }   // pause didn't land yet: ask again
   S.isPlaying = MUTE.on ? true : !!p.is_playing;   // don't flicker to "paused" while the song is hushed for scrubbing
@@ -399,7 +400,8 @@ function setBackground(p) {
   S.bgOn = S.bgOn === 'A' ? 'B' : 'A';
   const root = document.documentElement.style;                       // the page canvas carries the same colours, so the strips iPadOS paints outside the viewport (status bar / home bar) match
   const c3 = (a) => 'rgb(' + a.map(Math.round).join(',') + ')';
-  root.backgroundColor = c3(p.D);                                     // purely horizontal gradient that repeats downwards: whatever strip iPadOS paints outside the page matches the edges of the scene
+  const edge = c3(p.M.map((v, i) => (v + p.D[i]) / 2));                // about the colour the scene has along its bottom edge
+  root.setProperty('--edge', edge); root.backgroundColor = edge;                                     // purely horizontal gradient that repeats downwards: whatever strip iPadOS paints outside the page matches the edges of the scene
   root.backgroundImage = 'linear-gradient(90deg,' + c3(p.L) + ' 0%,' + c3(p.M) + ' 38%,' + c3(p.D) + ' 72%,' + c3(p.M) + ' 100%)';
   root.backgroundRepeat = 'repeat-y'; root.backgroundSize = '100% 100vh'; root.backgroundPosition = '0 0';
   const meta = document.querySelector('meta[name=theme-color]');
@@ -417,7 +419,7 @@ async function changeTrack(t) {
   if (my !== S.seq) return;
   const stage = $('stage');
   if (!first && !quiet) { stage.classList.add('changing'); S.lifted = true; renderArm(); await sleep(550); if (my !== S.seq) return; }
-  setLabel(t); rrSync();
+  setLabel(t); rrSync(); mediaMeta(t); likeLoad(t.id);
   lyOnTrack(t);
   if (Q.open) loadQueue();
   setSleeve(loaded ? t.art : null, loaded ? loaded.cors : false);
@@ -831,6 +833,112 @@ async function skipTo(i) {                                  // Spotify has no "j
   setTimeout(poll, 500);
 }
 
+/* ---------- like, share, add to queue, swipe ---------- */
+let likeFor = null;
+async function likeLoad(id) {
+  likeFor = id; S.liked = false; likeSync();
+  if (S.demo || !id || S.track && S.track.episode) return;
+  try { const r = await api('GET', '/me/tracks/contains', { query: { ids: id } }); if (r.ok && Array.isArray(r.data) && likeFor === id) { S.liked = !!r.data[0]; likeSync(); } } catch { /* ignore */ }
+}
+function likeSync() { const b = $('btnLike'); if (!b) return; b.setAttribute('aria-pressed', String(!!S.liked)); b.setAttribute('aria-label', S.liked ? 'Remove from liked songs' : 'Like this song'); b.title = b.getAttribute('aria-label'); }
+async function toggleLike() {
+  if (S.demo) return toast('Liking is not available in demo mode.');
+  const id = S.trackId; if (!id || (S.track && S.track.episode)) return;
+  const want = !S.liked; S.liked = want; likeSync(); const b = $('btnLike'); b.classList.remove('pop'); void b.offsetWidth; if (want) b.classList.add('pop');
+  try {
+    const r = await api(want ? 'PUT' : 'DELETE', '/me/tracks', { query: { ids: id } });
+    if (!r.ok) {
+      S.liked = !want; likeSync();
+      if (r.status === 401 || r.status === 403) showNotice('Liking songs needs one more Spotify permission. Reconnect once to allow it.', [{ label: 'Reconnect Spotify', fn: login }]);
+      else toast(explain(r), true);
+    } else toast(want ? 'Added to your Liked Songs' : 'Removed from your Liked Songs');
+  } catch { S.liked = !want; likeSync(); toast('Could not reach Spotify.', true); }
+}
+async function shareSong() {
+  const t = S.track; if (!t || !S.trackId || S.demo) return toast('Play a song first.');
+  const url = 'https://open.spotify.com/' + (t.episode ? 'episode/' : 'track/') + S.trackId, text = t.title + ' · ' + t.artists;
+  try { if (navigator.share) { await navigator.share({ title: t.title, text, url }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(text + '\n' + url); toast('Song link copied'); } catch { toast(url); }
+}
+async function rrAddQueue() {
+  const t = RR.detail; if (!t || !t.uri) return;
+  try { const r = await api('POST', '/me/player/queue', { query: { uri: t.uri } }); if (r.ok) toast('Added to the queue: ' + t.name); else toast(r.status === 404 ? 'Start playing something first, then add to the queue.' : explain(r), true); }
+  catch { toast('Could not reach Spotify.', true); }
+}
+function bindSwipe() {                                      // swipe the album sleeve: left = next, right = previous
+  const el = $('sleeve'); let d = null;
+  el.addEventListener('pointerdown', (e) => { if (document.body.classList.contains('lyrics') || e.target.closest('button')) return; d = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+  el.addEventListener('pointerup', (e) => {
+    if (!d) return; const dx = e.clientX - d.x, dy = e.clientY - d.y, dt = performance.now() - d.t; d = null;
+    if (Math.abs(dx) > 70 && Math.abs(dy) < 60 && Math.abs(dx) > Math.abs(dy) * 2 && dt < 700) control(dx < 0 ? 'next' : 'prev');
+  });
+  el.addEventListener('pointercancel', () => { d = null; });
+}
+/* ---------- extras: shuffle, repeat, volume, sleep timer, lock-screen controls ---------- */
+let sleepT = 0, sleepEnd = 0, sleepIv = 0, volT = 0;
+const SLEEP_STEPS = [0, 15, 30, 45, 60];
+function extrasSync() {
+  const sh = $('btnShuffle'), rp = $('btnRepeat'), vr = $('volRange');
+  if (sh) sh.setAttribute('aria-pressed', String(!!S.shuffle));
+  if (rp) { const on = S.repeat && S.repeat !== 'off'; rp.setAttribute('aria-pressed', String(!!on)); rp.dataset.pill = S.repeat === 'track' ? 'One' : on ? 'All' : 'Off'; }
+  if (vr && !vr.matches(':active') && typeof S.volume === 'number') { vr.value = S.volume; vr.style.setProperty('--v', S.volume + '%'); }
+  if (vr) vr.disabled = !!S.demo;
+}
+async function setShuffle() {
+  if (S.demo) return toast('Shuffle is not available in demo mode.');
+  const want = !S.shuffle; S.shuffle = want; extrasSync();
+  try { const r = await api('PUT', '/me/player/shuffle', { query: { state: String(want) } }); if (!r.ok) { S.shuffle = !want; extrasSync(); toast(explain(r), true); } else { toast('Shuffle ' + (want ? 'on' : 'off')); setTimeout(poll, 600); } }
+  catch { S.shuffle = !want; extrasSync(); toast('Could not reach Spotify.', true); }
+}
+async function cycleRepeat() {
+  if (S.demo) return toast('Repeat is not available in demo mode.');
+  const prev = S.repeat || 'off', next = prev === 'off' ? 'context' : prev === 'context' ? 'track' : 'off'; S.repeat = next; extrasSync();
+  try { const r = await api('PUT', '/me/player/repeat', { query: { state: next } }); if (!r.ok) { S.repeat = prev; extrasSync(); toast(explain(r), true); } else { toast('Repeat: ' + (next === 'track' ? 'this song' : next === 'context' ? 'all' : 'off')); setTimeout(poll, 600); } }
+  catch { S.repeat = prev; extrasSync(); toast('Could not reach Spotify.', true); }
+}
+function setVolume(v) {
+  S.volume = v; $('volRange').style.setProperty('--v', v + '%');
+  clearTimeout(volT);
+  volT = setTimeout(async () => {
+    if (S.demo) return;
+    try {
+      if (LOCAL.player && LOCAL.id && S.device && S.device.id === LOCAL.id) { try { await LOCAL.player.setVolume(v / 100); return; } catch { /* fall back */ } }
+      const r = await api('PUT', '/me/player/volume', { query: { volume_percent: String(v) } });
+      if (!r.ok) toast(r.status === 403 ? 'This device’s volume can’t be changed from here (use the device’s own buttons).' : explain(r), true);
+    } catch { toast('Could not reach Spotify.', true); }
+  }, 150);
+}
+function sleepTick() {
+  const b = $('btnSleep'); if (!b) return;
+  const left = sleepEnd - Date.now();
+  if (!sleepT || left <= 0) { b.dataset.pill = 'Off'; b.setAttribute('aria-pressed', 'false'); return; }
+  b.dataset.pill = Math.ceil(left / 60000) + ' min'; b.setAttribute('aria-pressed', 'true');
+}
+function cycleSleep() {
+  clearTimeout(sleepT); clearInterval(sleepIv); sleepT = 0;
+  const cur = Number($('btnSleep').dataset.mins || 0), next = SLEEP_STEPS[(SLEEP_STEPS.indexOf(cur) + 1) % SLEEP_STEPS.length];
+  $('btnSleep').dataset.mins = next;
+  if (next) {
+    sleepEnd = Date.now() + next * 60000;
+    sleepT = setTimeout(async () => {
+      sleepT = 0; clearInterval(sleepIv); $('btnSleep').dataset.mins = 0; sleepTick();
+      if (S.isPlaying) { toast('Sleep timer: the needle lifts. Good night.'); await armSet(false); }
+    }, next * 60000);
+    sleepIv = setInterval(sleepTick, 15000); toast('Sleep timer: the record will stop in ' + next + ' min');
+  } else toast('Sleep timer off');
+  sleepTick();
+}
+function mediaMeta(t) {                                     // lock-screen / control-centre info and buttons
+  if (!('mediaSession' in navigator) || !window.MediaMetadata) return;
+  try { navigator.mediaSession.metadata = new MediaMetadata({ title: t.title || '', artist: t.artists || '', album: t.album || '', artwork: t.art ? [{ src: t.art, sizes: '640x640' }] : [] }); } catch { /* ignore */ }
+}
+function mediaInit() {
+  if (!('mediaSession' in navigator)) return;
+  const set = (a, f) => { try { navigator.mediaSession.setActionHandler(a, f); } catch { /* unsupported action */ } };
+  set('play', () => armSet(true)); set('pause', () => armSet(false));
+  set('nexttrack', () => control('next')); set('previoustrack', () => control('prev'));
+  set('seekto', (d) => { if (d && typeof d.seekTime === 'number') seek(d.seekTime * 1000); });
+}
 const mmss = (ms) => { const s = Math.round(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 async function playBody(body, name, deviceId, shuffle) {
   activateLocal();
@@ -1810,6 +1918,10 @@ function bind() {
     if (e.key === 'ArrowDown') { e.preventDefault(); list[(i + 1) % list.length].focus(); } else if (e.key === 'ArrowUp') { e.preventDefault(); list[(i - 1 + list.length) % list.length].focus(); }
   });
   window.closeNeedleMenu = () => setMenu(false);
+  $('btnLike').onclick = toggleLike; $('btnShare').onclick = shareSong; if ($('rrDQueue')) $('rrDQueue').onclick = rrAddQueue; bindSwipe();
+  $('btnShuffle').onclick = setShuffle; $('btnRepeat').onclick = cycleRepeat; $('btnSleep').onclick = cycleSleep;
+  $('volRange').addEventListener('input', (e) => setVolume(Number(e.target.value)));
+  mediaInit(); extrasSync();
   $('btnQueue').onclick = openQueue;
   $('btnQueueClose').onclick = closeQueue;
   bindTurntable(); bindLocal();
@@ -1847,6 +1959,8 @@ function bind() {
     else if (e.key === 'ArrowRight') control('next');
     else if (e.key === 'ArrowLeft') control('prev');
     else if (e.key === 'l' || e.key === 'L') setLyrics(!S.lyricsOn);
+    else if (e.key === 'h' || e.key === 'H') setShuffle();
+    else if (e.key === 'r' || e.key === 'R') cycleRepeat();
     else if (e.key === 'a' || e.key === 'A')setAmbient(!document.body.classList.contains('ambient'));
     else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
   });

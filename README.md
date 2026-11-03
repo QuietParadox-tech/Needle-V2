@@ -9,7 +9,7 @@ NEEDLE **displays and remote-controls** Spotify, and can also **play the audio i
 - **Auth:** Authorization Code + PKCE only. The implicit grant and `localhost` / plain-HTTP redirect URIs were removed on 27 Nov 2025. NEEDLE uses PKCE, so there is **no client secret** anywhere.
 - **Development Mode (Feb/Mar 2026 rules):** the app *owner* must have Premium; one Client ID per developer; max **5 authorized users** per app; some endpoints were removed. The player endpoints NEEDLE uses (`/me/player`, `/play`, `/pause`, `/next`, `/previous`, `/seek`, `/devices`) were not on the removal list I found, but I could not test against a live account, so verify on first run.
 - **Playback control needs Premium** (you have it). Spotify can also refuse commands during ads or on some devices; NEEDLE shows the error and never fakes success.
-- **Scopes requested:** `user-read-playback-state`, `user-modify-playback-state`, `playlist-read-private`, `playlist-read-collaborative`, `user-library-read` (list your playlists and saved songs), `user-read-recently-played` (the Recently Played shelf), `streaming`, `user-read-email`, `user-read-private` (needed by Spotify to play audio inside the page). Nothing else. If you connected before the Record Room existed, only the Recently Played shelf needs it, so everything else keeps working until you tap Reconnect there.
+- **Scopes requested:** `user-read-playback-state`, `user-modify-playback-state`, `playlist-read-private`, `playlist-read-collaborative`, `user-library-read` (list your playlists and saved songs), `user-read-recently-played` (the Recently Played shelf), `user-library-modify` (the heart button; asked for at login, and if your login predates it the heart offers a one-tap Reconnect), `streaming`, `user-read-email`, `user-read-private` (needed by Spotify to play audio inside the page). Nothing else. If you connected before the Record Room existed, only the Recently Played shelf needs it, so everything else keeps working until you tap Reconnect there.
 
 ## 1. Create the Spotify app (once)
 
@@ -87,3 +87,10 @@ The Record Room headings use the Google Fonts *Shrikhand* and *Special Elite* (l
 `index.html` · `style.css` · `app.js` · `config.js` · `manifest.webmanifest` · `icon.svg` · `apple-touch-icon.png`
 
 The look setting covers everything: in Classic the Record Room, dialogs, lyrics and menus all use the original minimal style (dark glass, cream type, gold accents); the cabinet, wood, stickers and typewriter type only appear in Retro.
+
+## Extras in the settings menu
+- **Shuffle** (H) and **Repeat** (R: off → all → this song) use Spotify's own shuffle/repeat on whatever device is playing.
+- **Volume** slider sets the playing device's volume. (On iPhone/iPad Safari the NEEDLE browser player itself always follows the device's volume buttons; the slider works for Spotify Connect devices.)
+- **Sleep timer** (15 / 30 / 45 / 60 min): when it ends the tonearm lifts and the music stops.
+- **Lock-screen controls**: the title, artist and cover show in the iOS / Android / desktop media controls, with play, pause, next, previous and seek.
+- **Like** heart next to the transport buttons saves / removes the song in Liked Songs. **Share song** (menu) opens the share sheet or copies the link. **Add to queue** is in a song's details in the Record Room. **Swipe** the album sleeve left / right for next / previous.

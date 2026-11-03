@@ -678,7 +678,7 @@ body.room-open .ui{opacity:.35;transition:opacity .45s}
 body.dark .vignette{background:radial-gradient(120% 100% at 55% 50%,transparent 45%,rgba(0,0,0,.55))}
 body.dark .grain{opacity:.09}
 /* the background reaches past the bottom edge, so iOS toolbars / home-indicator areas never show a bare strip */
-#bg{bottom:-90px}
+
 
 /* the record leaving the crate and landing on the turntable */
 .rr-card.pulling .rr-disc{transform:translateY(calc(var(--pull,.8) * -100%));transition:transform .55s cubic-bezier(.3,.9,.3,1)}
@@ -938,3 +938,42 @@ body.retro #btnMenu[aria-expanded="true"],body.retro #btnMenu.on{background:var(
 @media (prefers-reduced-motion:reduce){#menu{animation:none}#btnMenu{transition:none}}
 #btnMenu svg{width:26px;height:26px}
 #menu .menu-ver{padding:8px 12px 4px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;opacity:.5;text-align:center}
+
+/* the scene's bottom edge fades into the page colour (set from the cover), so if the system paints a strip below the page (iPad home-indicator area) it continues the background instead of looking like a bar */
+#bg::before{content:"";position:absolute;left:0;right:0;bottom:0;height:clamp(40px,7vh,72px);z-index:2;pointer-events:none;background:linear-gradient(to bottom,transparent,color-mix(in srgb,var(--edge,#120b07) 45%,transparent) 55%,var(--edge,#120b07))}
+html{background-color:var(--edge,#2a1a10)}
+
+/* shuffle / repeat / volume / sleep timer rows in the menu */
+#menu button.icon.sm[data-pill]::after{content:attr(data-pill)}
+#menu button.icon.sm[data-pill="Off"]::after{background:transparent;color:inherit;border-color:rgba(240,227,199,.35);opacity:.8}
+#menu .menu-vol{display:flex;align-items:center;gap:14px;height:48px;padding:0 14px 0 12px;color:var(--cream)}
+#menu .menu-vol svg{flex:none;width:22px;height:22px}
+#menu .menu-vol input{flex:1;min-width:0;height:32px;margin:0;background:transparent;-webkit-appearance:none;appearance:none;touch-action:pan-y;cursor:pointer}
+#menu .menu-vol input::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:linear-gradient(90deg,var(--cream) var(--v,60%),rgba(240,227,199,.22) var(--v,60%))}
+#menu .menu-vol input::-moz-range-track{height:6px;border-radius:3px;background:rgba(240,227,199,.22)}
+#menu .menu-vol input::-moz-range-progress{height:6px;border-radius:3px;background:var(--cream)}
+#menu .menu-vol input::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;margin-top:-8px;border-radius:50%;background:var(--cream);border:0;box-shadow:0 2px 6px rgba(0,0,0,.45)}
+#menu .menu-vol input::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:var(--cream);border:0}
+#menu .menu-vol input:disabled{opacity:.4}
+body.retro #menu .menu-vol{color:var(--r-cream)}
+body.retro #menu .menu-vol input::-webkit-slider-runnable-track{background:linear-gradient(90deg,var(--r-butter) var(--v,60%),rgba(0,0,0,.45) var(--v,60%));border:1px solid rgba(246,234,208,.3)}
+body.retro #menu .menu-vol input::-webkit-slider-thumb{background:var(--r-cream);border:2px solid var(--r-ink);box-shadow:0 2px 0 var(--r-edge)}
+body.retro #menu button.icon.sm[data-pill]:not([data-pill="Off"])::after{background:var(--r-butter);color:var(--r-ink);border-color:var(--r-ink)}
+body:not(.retro) #menu button.icon.sm[data-pill]:not([data-pill="Off"])::after{background:var(--cream);color:#2a1a10;border-color:var(--cream)}
+
+/* like button next to the transport controls */
+#btnLike svg{width:22px;height:22px;fill:none}
+#btnLike[aria-pressed="true"]{color:#e0462f}
+#btnLike[aria-pressed="true"] svg path{fill:currentColor;stroke:currentColor}
+#btnLike.pop svg{animation:likePop .4s cubic-bezier(.16,1,.3,1)}
+@keyframes likePop{40%{transform:scale(1.3)}}
+body.retro #dock #btnLike[aria-pressed="true"]{color:#c8321a}
+body:not(.retro) #btnLike{opacity:.9}
+body:not(.retro) .btns{gap:2px}
+@media (prefers-reduced-motion:reduce){#btnLike.pop svg{animation:none}}
+/* swipe the sleeve left / right for next / previous */
+body:not(.lyrics) #sleeve{touch-action:none}
+.btns{position:relative}
+#btnLike{position:absolute;left:calc(100% + 14px);top:50%;margin-top:-22px}
+body.retro #dock #btnLike{margin-top:-25px}
+@media (max-height:520px) and (orientation:landscape){#dock #btnLike{margin-top:-20px}}
