@@ -838,7 +838,14 @@ let likeFor = null;
 async function likeLoad(id) {
   likeFor = id; S.liked = false; likeSync();
   if (S.demo || !id || S.track && S.track.episode) return;
-  try { const r = await api('GET', '/me/tracks/contains', { query: { ids: id } }); if (r.ok && Array.isArray(r.data) && likeFor === id) { S.liked = !!r.data[0]; likeSync(); } } catch { /* ignore */ }
+  try { const r = await libApi('GET', id); if (r.ok && Array.isArray(r.data) && likeFor === id) { S.liked = !!r.data[0]; likeSync(); } } catch { /* ignore */ }
+}
+/* Spotify replaced /me/tracks (save, remove, contains) with /me/library (by URI) in Feb 2026; the old ones are tried only if the new ones don't exist */
+async function libApi(method, id) {
+  const uri = 'spotify:track:' + id, path = method === 'GET' ? '/me/library/contains' : '/me/library';
+  const r = await api(method, path, { query: { uris: uri } });
+  if (r.status !== 404 && r.status !== 405 && r.status !== 410 && r.status !== 400) return r;
+  return api(method, method === 'GET' ? '/me/tracks/contains' : '/me/tracks', { query: { ids: id } });
 }
 function likeSync() { const b = $('btnLike'); if (!b) return; b.setAttribute('aria-pressed', String(!!S.liked)); b.setAttribute('aria-label', S.liked ? 'Remove from liked songs' : 'Like this song'); b.title = b.getAttribute('aria-label'); }
 async function toggleLike() {
@@ -846,12 +853,12 @@ async function toggleLike() {
   const id = S.trackId; if (!id || (S.track && S.track.episode)) return;
   const want = !S.liked; S.liked = want; likeSync(); const b = $('btnLike'); b.classList.remove('pop'); void b.offsetWidth; if (want) b.classList.add('pop');
   try {
-    const r = await api(want ? 'PUT' : 'DELETE', '/me/tracks', { query: { ids: id } });
+    const r = await libApi(want ? 'PUT' : 'DELETE', id);
     if (!r.ok) {
       S.liked = !want; likeSync();
       if (r.status === 401 || r.status === 403) showNotice('Liking songs needs one more Spotify permission. Reconnect once to allow it.', [{ label: 'Reconnect Spotify', fn: login }]);
       else toast(explain(r), true);
-    } else toast(want ? 'Added to your Liked Songs' : 'Removed from your Liked Songs');
+    } else { toast(want ? 'Added to your Liked Songs' : 'Removed from your Liked Songs'); if (RR.liked) { RR.liked.items = []; RR.liked.offset = 0; RR.liked.more = true; RR.saved = null; } }
   } catch { S.liked = !want; likeSync(); toast('Could not reach Spotify.', true); }
 }
 async function shareSong() {
