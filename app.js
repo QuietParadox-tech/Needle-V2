@@ -1635,7 +1635,12 @@ let peekT;
 function peek() {
   if (!document.body.classList.contains('ambient')) return;
   document.body.classList.add('peek'); clearTimeout(peekT);
-  peekT = setTimeout(() => document.body.classList.remove('peek'), 3500);
+  peekT = setTimeout(peekEnd, 3500);
+}
+function peekEnd() {                                         // never fade the controls away while the options menu or a panel is open
+  const open = !$('menu').hidden || ['customModal', 'devicesModal', 'queueModal', 'lyPickModal'].some((id) => $(id) && !$(id).hidden);
+  if (open) { peekT = setTimeout(peekEnd, 3500); return; }
+  document.body.classList.remove('peek');
 }
 async function updateWakeLock() {
   try {
@@ -2015,7 +2020,8 @@ function bind() {
   /* settings menu: one gear button lists every option */
   const menu = $('menu'), gear = $('btnMenu');
   const setMenu = (on) => { menu.hidden = !on; gear.setAttribute('aria-expanded', String(on)); gear.classList.toggle('on', on); if (on) { const f = menu.querySelector('button:not([hidden])'); if (f && document.activeElement === gear) { /* keep focus on the gear for touch; keyboard users arrow in */ } } else if (document.activeElement && menu.contains(document.activeElement)) gear.focus({ preventScroll: true }); };
-  gear.onclick = (e) => { e.stopPropagation(); setMenu(menu.hidden); };
+  gear.onclick = (e) => { e.stopPropagation(); setMenu(menu.hidden); peek(); };
+  menu.addEventListener('pointerdown', () => peek());
   // the menu stays open until you press one of its Close buttons (or the gear again / Esc)
   ['btnMenuClose', 'btnMenuClose2'].forEach((id) => { $(id).onclick = () => setMenu(false); });
   menu.addEventListener('keydown', (e) => {
