@@ -12,7 +12,7 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="style.css?v=33">
+<link rel="stylesheet" href="style.css?v=35">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shrikhand&family=Special+Elite&display=swap" media="print" onload="this.media='all'">
 </head>
@@ -102,10 +102,11 @@
     <button class="icon sm" role="menuitem" id="btnSfx" title="Vinyl sounds (S)" aria-label="Vinyl scratch sounds" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="slash" d="M3 3l18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="lbl">Vinyl sounds</span></button>
     <button class="icon sm" role="menuitem" id="btnStyle" title="Retro / Classic look" aria-label="Switch to the classic look" aria-pressed="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/><path d="M12 3v3M21 12h-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="lbl">Retro look</span></button>
     <button class="icon sm" role="menuitem" id="btnTheme" title="Dark mode" aria-label="Switch to dark mode" aria-pressed="false"><svg class="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><svg class="moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z" fill="currentColor"/></svg><span class="lbl">Dark mode</span></button>
+    <button class="icon sm" role="menuitem" id="btnCustom" title="Customize the look" aria-label="Customize the look"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.4 0 2-.9 2-1.8 0-1.3-1.2-1.6-1.2-2.8 0-1 .8-1.7 1.9-1.7H17a4 4 0 0 0 4-4C21 6.8 17 3 12 3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="7.5" cy="11" r="1.2" fill="currentColor"/><circle cx="10.5" cy="7" r="1.2" fill="currentColor"/><circle cx="15.5" cy="8" r="1.2" fill="currentColor"/></svg><span class="lbl">Customize…</span></button>
     <button class="icon sm" role="menuitem" id="btnAmbient" title="Ambient mode (A)" aria-label="Ambient mode"><svg viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg><span class="lbl">Ambient mode</span></button>
     <button class="icon sm" role="menuitem" id="btnFull" title="Fullscreen (F)" aria-label="Fullscreen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="lbl">Full screen</span></button>
     <button class="icon sm" role="menuitem" id="btnLogout" title="Disconnect Spotify" aria-label="Disconnect Spotify"><svg viewBox="0 0 24 24"><path d="M10 4H5v16h5M15 8l4 4-4 4M19 12H9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Disconnect Spotify</span></button>
-      <div class="menu-ver" aria-hidden="true">Build 33</div>
+      <div class="menu-ver" aria-hidden="true">Build 35</div>
     </div>
   </div>
 </header>
@@ -240,6 +241,17 @@
   </div>
 </section>
 
+<div id="ambClock" aria-hidden="true"></div>
+
+<section id="customModal" class="modal" hidden>
+  <div class="card" id="customCard" role="dialog" aria-label="Customize">
+    <h2>Customize</h2>
+    <div id="customBody"></div>
+    <button class="linkish" id="btnCustomReset" type="button">Reset to defaults</button>
+    <button class="cta" id="btnCustomClose" type="button" style="margin-top:6px">Done</button>
+  </div>
+</section>
+
 <section id="devicesModal" class="modal" hidden>
   <div class="card">
     <h2>Playback device</h2>
@@ -253,7 +265,7 @@
 
 <div id="toast" role="status"></div>
 
-<script src="config.js?v=33"></script>
-<script src="app.js?v=33"></script>
+<script src="config.js?v=35"></script>
+<script src="app.js?v=35"></script>
 </body>
 </html>

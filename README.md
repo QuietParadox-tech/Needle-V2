@@ -94,3 +94,14 @@ The look setting covers everything: in Classic the Record Room, dialogs, lyrics 
 - **Sleep timer** (15 / 30 / 45 / 60 min): when it ends the tonearm lifts and the music stops.
 - **Lock-screen controls**: the title, artist and cover show in the iOS / Android / desktop media controls, with play, pause, next, previous and seek.
 - **Like** heart next to the transport buttons saves / removes the song in Liked Songs. **Share song** (menu) opens the share sheet or copies the link. **Add to queue** is in a song's details in the Record Room. **Swipe** the album sleeve left / right for next / previous.
+
+## Customize (Menu → Customize…)
+- **Record speed** – Lazy, Slow, 33⅓ rpm.
+- **Vinyl colour** – Black, Crimson, Navy, Forest, Amber, Ivory.
+- **Record label** – Orange, Gold, Cream, Teal, Pink, Red, or *Cover colours* (follows the album art). Retro look only.
+- **Retro colours** – Ember, Teal, Avocado, Plum, Cobalt accent palettes.
+- **Clock in Ambient mode** and a **Film grain** toggle.
+- **Reset to defaults**. Everything is saved in your browser (`localStorage: needle.custom`).
+
+## Lock screen / Control Centre
+iOS shows the Spotify player's hidden iframe ("Spotify Embedded Player") as the Now Playing app. NEEDLE plays a silent looping audio clip of its own and sets Media Session metadata (title, artist, artwork) so the song can appear there. This is a best-effort workaround and can vary by iOS version.

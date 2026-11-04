@@ -13,7 +13,7 @@ const OPT_SCOPES = ['user-read-recently-played', 'user-library-modify'];       /
 const SCOPES = NEED_SCOPES.concat(OPT_SCOPES).join(' ');
 const API = 'https://api.spotify.com/v1';
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
-const K = { tokens: 'needle.tokens', verifier: 'needle.verifier', state: 'needle.state', cid: 'needle.clientId', ambient: 'needle.ambient', lyrics: 'needle.lyrics', local: 'needle.local', sfx: 'needle.sfx', theme: 'needle.theme', style: 'needle.style' };
+const K = { tokens: 'needle.tokens', verifier: 'needle.verifier', state: 'needle.state', cid: 'needle.clientId', ambient: 'needle.ambient', lyrics: 'needle.lyrics', local: 'needle.local', sfx: 'needle.sfx', theme: 'needle.theme', style: 'needle.style', custom: 'needle.custom' };
 
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -251,7 +251,7 @@ function renderPlaying() {
   document.body.classList.toggle('playing', S.isPlaying);
   $('deviceCap').textContent = MUTE.on ? 'Scrubbing · song paused' : S.demo ? 'DEMO MODE · not connected to Spotify'
     : S.device ? 'On ' + S.device.name : '';
-  renderArm(); tick(true); updateWakeLock(); rrSync();
+  renderArm(); tick(true); updateWakeLock(); rrSync(); keepSync();
 }
 const fmt = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 let tickN = 0;
@@ -404,6 +404,7 @@ function setBackground(p) {
   root.setProperty('--edge', edge); root.backgroundColor = edge;                                     // purely horizontal gradient that repeats downwards: whatever strip iPadOS paints outside the page matches the edges of the scene
   root.backgroundImage = 'linear-gradient(90deg,' + c3(p.L) + ' 0%,' + c3(p.M) + ' 38%,' + c3(p.D) + ' 72%,' + c3(p.M) + ' 100%)';
   root.backgroundRepeat = 'repeat-y'; root.backgroundSize = '100% 100vh'; root.backgroundPosition = '0 0';
+  if (CUSTOM.label === 'cover') applyLabel();
   const meta = document.querySelector('meta[name=theme-color]');
   if (meta) meta.content = 'rgb(' + p.M.map(Math.round).join(',') + ')';
 }
@@ -833,6 +834,53 @@ async function skipTo(i) {                                  // Spotify has no "j
   setTimeout(poll, 500);
 }
 
+/* ---------- customize: record speed, vinyl colour, label, retro palette, ambient clock, grain ---------- */
+const CUSTOM_DEF = { spin: '10s', vinyl: '#0b0b0b', label: 'default', pal: 'ember', clock: false, grain: true };
+const CUSTOM_OPTS = {
+  spin: [['Lazy', '14s'], ['Slow', '10s'], ['33⅓ rpm', '1.8s']],
+  vinyl: [['Black', '#0b0b0b'], ['Crimson', '#4a0d14'], ['Navy', '#0c1f4a'], ['Forest', '#0d3322'], ['Amber', '#4a2c0a'], ['Ivory', '#b8b09c']],
+  label: [['Theme', 'default'], ['Orange', 'orange'], ['Gold', 'gold'], ['Cream', 'cream'], ['Teal', 'teal'], ['Pink', 'pink'], ['Red', 'red'], ['Cover colours', 'cover']],
+  pal: [['Ember', 'ember', '#c8541c'], ['Teal', 'teal', '#1f8a8a'], ['Avocado', 'avocado', '#7a9a2c'], ['Plum', 'plum', '#9a3f78'], ['Cobalt', 'cobalt', '#2f6fbf']],
+};
+const LABELS = { orange: ['#d8651f', '#b0451a', '#f6ead0', '#2e1a10'], gold: ['#e6c36a', '#b98f2e', '#2e1a10', '#2e1a10'], cream: ['#f3e7c8', '#d9c79a', '#9c3c10', '#2e1a10'],
+  teal: ['#2a9d9d', '#16706f', '#f6ead0', '#0d2e2e'], pink: ['#e56b9a', '#b8426f', '#fff3dc', '#3a1020'], red: ['#c0392b', '#8e241a', '#fff3dc', '#2a0a06'] };
+let CUSTOM = Object.assign({}, CUSTOM_DEF);
+try { Object.assign(CUSTOM, JSON.parse(store.get(K.custom) || '{}')); } catch { /* defaults */ }
+function applyLabel() {
+  const r = document.documentElement.style; let L = LABELS[CUSTOM.label];
+  if (CUSTOM.label === 'cover' && curPal) {
+    const lum = (c) => 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2], a = curPal.A, b = curPal.B, light = lum(a) > 150;
+    L = ['rgb(' + a.map(Math.round).join(',') + ')', 'rgb(' + b.map(Math.round).join(',') + ')', light ? '#2e1a10' : '#f6ead0', light ? '#2e1a10' : '#1c0f08'];
+  }
+  if (!L) { ['--lab-a', '--lab-b', '--lab-title', '--lab-ink'].forEach((k) => r.removeProperty(k)); return; }
+  r.setProperty('--lab-a', L[0]); r.setProperty('--lab-b', L[1]); r.setProperty('--lab-title', L[2]); r.setProperty('--lab-ink', L[3]);
+}
+function updateClock() { const e = $('ambClock'); if (e) e.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+function applyCustom() {
+  const r = document.documentElement.style, b = document.body;
+  r.setProperty('--spin', CUSTOM.spin); r.setProperty('--vinyl', CUSTOM.vinyl);
+  if (CUSTOM.pal === 'ember') delete b.dataset.pal; else b.dataset.pal = CUSTOM.pal;
+  b.classList.toggle('clock', !!CUSTOM.clock); b.classList.toggle('nograin', !CUSTOM.grain);
+  applyLabel(); updateClock();
+}
+function saveCustom() { store.set(K.custom, JSON.stringify(CUSTOM)); applyCustom(); buildCustom(); }
+function buildCustom() {
+  const box = $('customBody'); box.innerHTML = '';
+  const sec = (title, note) => { const h = document.createElement('h3'); h.textContent = title; box.appendChild(h); if (note) { const n = document.createElement('p'); n.className = 'note'; n.textContent = note; box.appendChild(n); } const d = document.createElement('div'); d.className = 'chips'; box.appendChild(d); return d; };
+  const chip = (d, key, label, val, cls, bg) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'chip' + (cls ? ' ' + cls : ''); b.setAttribute('aria-pressed', String(CUSTOM[key] === val));
+    if (cls && cls.includes('sw')) { b.setAttribute('aria-label', label); b.title = label; if (bg) b.style.background = bg; } else b.textContent = label;
+    b.onclick = () => { CUSTOM[key] = val; saveCustom(); }; d.appendChild(b);
+  };
+  let d = sec('Record speed'); CUSTOM_OPTS.spin.forEach(([l, v]) => chip(d, 'spin', l, v));
+  d = sec('Vinyl colour'); CUSTOM_OPTS.vinyl.forEach(([l, v]) => chip(d, 'vinyl', l, v, 'sw', v));
+  d = sec('Record label', 'Shown in the Retro look.'); CUSTOM_OPTS.label.forEach(([l, v]) => chip(d, 'label', l, v, v === 'default' ? 'sw def' : v === 'cover' ? 'sw cover' : 'sw', v === 'default' || v === 'cover' ? '' : LABELS[v][0]));
+  d = sec('Retro colours', 'Accent colour of the Retro look.'); CUSTOM_OPTS.pal.forEach(([l, v, col]) => chip(d, 'pal', l, v, 'sw', col));
+  d = sec('Extras'); chip(d, 'clock', 'Clock in Ambient mode', true); d.lastChild.setAttribute('aria-pressed', String(!!CUSTOM.clock)); d.lastChild.onclick = () => { CUSTOM.clock = !CUSTOM.clock; saveCustom(); };
+  chip(d, 'grain', 'Film grain', true); d.lastChild.setAttribute('aria-pressed', String(!!CUSTOM.grain)); d.lastChild.onclick = () => { CUSTOM.grain = !CUSTOM.grain; saveCustom(); };
+}
+function openCustom() { buildCustom(); $('customModal').hidden = false; if (window.closeNeedleMenu) closeNeedleMenu(); $('btnCustomClose').focus({ preventScroll: true }); }
+function closeCustom() { $('customModal').hidden = true; }
 /* ---------- like, share, add to queue, swipe ---------- */
 let likeFor = null;
 async function likeLoad(id) {
@@ -937,9 +985,29 @@ function cycleSleep() {
 }
 function mediaMeta(t) {                                     // lock-screen / control-centre info and buttons
   if (!('mediaSession' in navigator) || !window.MediaMetadata) return;
-  try { navigator.mediaSession.metadata = new MediaMetadata({ title: t.title || '', artist: t.artists || '', album: t.album || '', artwork: t.art ? [{ src: t.art, sizes: '640x640' }] : [] }); } catch { /* ignore */ }
+  try { document.title = t.title ? t.title + ' · ' + (t.artists || 'NEEDLE') : 'NEEDLE'; navigator.mediaSession.metadata = new MediaMetadata({ title: t.title || '', artist: t.artists || '', album: t.album || '', artwork: t.art ? [{ src: t.art, sizes: '640x640' }] : [] }); } catch { /* ignore */ }
+}
+/* The Spotify player runs inside a hidden frame that calls itself "Spotify Embedded Player", and the lock screen / Control Centre shows that
+   frame's (empty) info. A silent looping clip played by NEEDLE itself makes NEEDLE the "now playing" app, so the real title, artist and cover show. */
+let keepEl = null;
+function keepAudio() {
+  if (keepEl) return keepEl;
+  try {
+    const n = 8000, b = new Uint8Array(44 + n), dv = new DataView(b.buffer), w = (o, t) => { for (let i = 0; i < t.length; i++) b[o + i] = t.charCodeAt(i); };
+    w(0, 'RIFF'); dv.setUint32(4, 36 + n, true); w(8, 'WAVEfmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+    dv.setUint32(24, 8000, true); dv.setUint32(28, 8000, true); dv.setUint16(32, 1, true); dv.setUint16(34, 8, true); w(36, 'data'); dv.setUint32(40, n, true); b.fill(128, 44);
+    keepEl = new Audio(URL.createObjectURL(new Blob([b], { type: 'audio/wav' }))); keepEl.loop = true; keepEl.preload = 'auto'; keepEl.setAttribute('playsinline', '');
+  } catch { keepEl = null; }
+  return keepEl;
+}
+function keepSync() {
+  if ('mediaSession' in navigator) try { navigator.mediaSession.playbackState = S.isPlaying ? 'playing' : 'paused'; } catch { /* ignore */ }
+  const a = keepEl; if (!a || S.demo) return;
+  if (S.isPlaying) { const p = a.play(); if (p && p.catch) p.catch(() => {}); } else a.pause();
 }
 function mediaInit() {
+  const unlock = () => { const a = keepAudio(); if (a) { const p = a.play(); if (p && p.then) p.then(() => { if (!S.isPlaying) a.pause(); }).catch(() => {}); } document.removeEventListener('pointerdown', unlock, true); };
+  document.addEventListener('pointerdown', unlock, true);
   if (!('mediaSession' in navigator)) return;
   const set = (a, f) => { try { navigator.mediaSession.setActionHandler(a, f); } catch { /* unsupported action */ } };
   set('play', () => armSet(true)); set('pause', () => armSet(false));
@@ -1925,6 +1993,9 @@ function bind() {
     if (e.key === 'ArrowDown') { e.preventDefault(); list[(i + 1) % list.length].focus(); } else if (e.key === 'ArrowUp') { e.preventDefault(); list[(i - 1 + list.length) % list.length].focus(); }
   });
   window.closeNeedleMenu = () => setMenu(false);
+  $('btnCustom').onclick = openCustom; $('btnCustomClose').onclick = closeCustom; $('customModal').addEventListener('pointerdown', (e) => { if (e.target === $('customModal')) closeCustom(); });
+  $('btnCustomReset').onclick = () => { CUSTOM = Object.assign({}, CUSTOM_DEF); saveCustom(); };
+  setInterval(() => { if (!document.hidden) updateClock(); }, 20000);
   $('btnLike').onclick = toggleLike; $('btnShare').onclick = shareSong; if ($('rrDQueue')) $('rrDQueue').onclick = rrAddQueue; bindSwipe();
   $('btnShuffle').onclick = setShuffle; $('btnRepeat').onclick = cycleRepeat; $('btnSleep').onclick = cycleSleep;
   $('volRange').addEventListener('input', (e) => setVolume(Number(e.target.value)));
@@ -1960,7 +2031,7 @@ function bind() {
     if (e.code === 'Space') { e.preventDefault(); control(S.isPlaying ? 'pause' : 'play'); }
     else if (e.key === 'q' || e.key === 'Q') openQueue();
     else if (e.key === 'Escape' && !$('menu').hidden) closeNeedleMenu();
-    else if (e.key === 'Escape') { if (!$('devicesModal').hidden || !$('queueModal').hidden || !$('lyPickModal').hidden) { closeLyPick(); closeQueue(); $('devicesModal').hidden = true; WAIT.ctx = null; } else if (!rrEscape()) { /* nothing open */ } }
+    else if (e.key === 'Escape') { if (!$('customModal').hidden) closeCustom(); else if (!$('devicesModal').hidden || !$('queueModal').hidden || !$('lyPickModal').hidden) { closeLyPick(); closeQueue(); $('devicesModal').hidden = true; WAIT.ctx = null; } else if (!rrEscape()) { /* nothing open */ } }
     else if (e.key === 'p' || e.key === 'P') (RR.open ? rrClose() : rrOpen());
     else if (e.key === 's' || e.key === 'S') setSfx(!SFX.on);
     else if (e.key === 'ArrowRight') control('next');
@@ -1984,6 +2055,7 @@ async function init() {
   if (store.get(K.ambient) === '1') document.body.classList.add('ambient');
   if (store.get(K.lyrics) === '1') setLyrics(true);
   applyTheme();
+  applyCustom();
   applyStyle(document.body.classList.contains('retro'), false);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitScene);
   setLabel({ title: 'NEEDLE', artists: 'Connect · Play · Spin', album: '' });
