@@ -394,6 +394,7 @@ function toggleTheme() { store.set(K.theme, themeNow() === 'dark' ? 'light' : 'd
 function setBackground(p) {
   curPal = p || null;
   p = p || DEFAULT_PAL;
+  if (CUSTOM.bg && CUSTOM.bg !== 'cover') p = BG_FIXED[CUSTOM.bg] || DEFAULT_PAL;       // Customize: a fixed backdrop instead of the cover colours
   if (document.body.classList.contains('dark')) p = darkPal(p);
   const A = $('bgA'), B = $('bgB'), next = S.bgOn === 'A' ? B : A, prev = S.bgOn === 'A' ? A : B;
   next.style.background = bgCss(p); next.classList.add('on'); prev.classList.remove('on');
@@ -835,12 +836,20 @@ async function skipTo(i) {                                  // Spotify has no "j
 }
 
 /* ---------- customize: record speed, vinyl colour, label, retro palette, ambient clock, grain ---------- */
-const CUSTOM_DEF = { spin: '10s', vinyl: '#0b0b0b', label: 'default', pal: 'ember', clock: false, grain: true };
+const CUSTOM_DEF = { spin: '10s', vinyl: '#0b0b0b', label: 'default', bg: 'cover', pal: 'ember', clock: false, grain: true };
 const CUSTOM_OPTS = {
   spin: [['Lazy', '14s'], ['Slow', '10s'], ['33⅓ rpm', '1.8s']],
   vinyl: [['Black', '#0b0b0b'], ['Crimson', '#4a0d14'], ['Navy', '#0c1f4a'], ['Forest', '#0d3322'], ['Amber', '#4a2c0a'], ['Ivory', '#b8b09c']],
+  bg: [['Cover colours', 'cover'], ['Default', 'theme'], ['Espresso', 'espresso'], ['Midnight', 'midnight'], ['Pine', 'forest'], ['Wine', 'wine'], ['Sunset', 'sunset']],
   label: [['Theme', 'default'], ['Orange', 'orange'], ['Gold', 'gold'], ['Cream', 'cream'], ['Teal', 'teal'], ['Pink', 'pink'], ['Red', 'red'], ['Cover colours', 'cover']],
   pal: [['Ember', 'ember', '#c8541c'], ['Teal', 'teal', '#1f8a8a'], ['Avocado', 'avocado', '#7a9a2c'], ['Plum', 'plum', '#9a3f78'], ['Cobalt', 'cobalt', '#2f6fbf']],
+};
+const BG_FIXED = {
+  espresso: { L: [120, 84, 56], M: [62, 38, 24], A: [110, 64, 34], D: [22, 13, 8], B: [96, 66, 44] },
+  midnight: { L: [70, 90, 140], M: [28, 40, 82], A: [60, 80, 150], D: [8, 12, 30], B: [50, 60, 120] },
+  forest: { L: [96, 140, 100], M: [34, 66, 46], A: [70, 120, 80], D: [9, 24, 15], B: [60, 100, 72] },
+  wine: { L: [160, 70, 90], M: [84, 24, 44], A: [140, 50, 70], D: [26, 8, 16], B: [120, 40, 62] },
+  sunset: { L: [240, 160, 90], M: [196, 90, 50], A: [230, 120, 60], D: [70, 26, 16], B: [210, 100, 70] },
 };
 const LABELS = { orange: ['#d8651f', '#b0451a', '#f6ead0', '#2e1a10'], gold: ['#e6c36a', '#b98f2e', '#2e1a10', '#2e1a10'], cream: ['#f3e7c8', '#d9c79a', '#9c3c10', '#2e1a10'],
   teal: ['#2a9d9d', '#16706f', '#f6ead0', '#0d2e2e'], pink: ['#e56b9a', '#b8426f', '#fff3dc', '#3a1020'], red: ['#c0392b', '#8e241a', '#fff3dc', '#2a0a06'] };
@@ -855,15 +864,35 @@ function applyLabel() {
   if (!L) { ['--lab-a', '--lab-b', '--lab-title', '--lab-ink'].forEach((k) => r.removeProperty(k)); return; }
   r.setProperty('--lab-a', L[0]); r.setProperty('--lab-b', L[1]); r.setProperty('--lab-title', L[2]); r.setProperty('--lab-ink', L[3]);
 }
-function updateClock() { const e = $('ambClock'); if (e) e.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+const CK = { raf: 0, last: 0, key: '', built: false };
+function clockBuild() {
+  const g = $('ckTicks'); if (!g || CK.built) return; CK.built = true; const NS = 'http://www.w3.org/2000/svg';
+  for (let i = 0; i < 60; i++) { const l = document.createElementNS(NS, 'line'), big = i % 5 === 0; l.setAttribute('y1', big ? -36.5 : -37.8); l.setAttribute('y2', big ? -33 : -35.6); l.setAttribute('transform', 'rotate(' + i * 6 + ')'); l.setAttribute('class', big ? 'ck-t big' : 'ck-t'); g.appendChild(l); }
+  [[0, 12], [90, 3], [180, 6], [270, 9]].forEach(([a, n]) => { const t = document.createElementNS(NS, 'text'), r = 27.5, x = Math.sin(a * Math.PI / 180) * r, y = -Math.cos(a * Math.PI / 180) * r; t.setAttribute('x', x.toFixed(2)); t.setAttribute('y', y.toFixed(2)); t.setAttribute('class', 'ck-num'); t.textContent = n; if (a !== 0) g.appendChild(t); });
+}
+function clockOn() { return document.body.classList.contains('ambient') && !!CUSTOM.clock && !document.hidden; }
+function updateClock() {
+  const box = $('ambClock'); if (!box) return; clockBuild();
+  const d = new Date(), sec = d.getSeconds() + d.getMilliseconds() / 1000, min = d.getMinutes() + sec / 60, hr = (d.getHours() % 12) + min / 60;
+  $('ckS').setAttribute('transform', 'rotate(' + (sec * 6).toFixed(2) + ')'); $('ckM').setAttribute('transform', 'rotate(' + (min * 6).toFixed(2) + ')'); $('ckH').setAttribute('transform', 'rotate(' + (hr * 30).toFixed(2) + ')');
+  const H = d.getHours(), key = H + ':' + d.getMinutes() + ':' + d.getDate();
+  if (key !== CK.key) {
+    CK.key = key; const q = (c) => box.querySelector(c);
+    q('.ck-time .h').textContent = H % 12 || 12; q('.ck-time .m').textContent = String(d.getMinutes()).padStart(2, '0'); q('.ap').textContent = H < 12 ? 'AM' : 'PM';
+    q('.ck-greet').textContent = H < 5 ? 'Late night spin' : H < 12 ? 'Good morning' : H < 17 ? 'Good afternoon' : H < 21 ? 'Good evening' : 'Night session';
+    q('.ck-date').textContent = d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' });
+  }
+}
+function clockLoop(t) { CK.raf = 0; if (!clockOn()) return; if (t - CK.last > 30) { CK.last = t; updateClock(); } CK.raf = requestAnimationFrame(clockLoop); }
+function clockKick() { updateClock(); if (!CK.raf && clockOn()) CK.raf = requestAnimationFrame(clockLoop); }
 function applyCustom() {
   const r = document.documentElement.style, b = document.body;
   r.setProperty('--spin', CUSTOM.spin); r.setProperty('--vinyl', CUSTOM.vinyl);
   if (CUSTOM.pal === 'ember') delete b.dataset.pal; else b.dataset.pal = CUSTOM.pal;
   b.classList.toggle('clock', !!CUSTOM.clock); b.classList.toggle('nograin', !CUSTOM.grain);
-  applyLabel(); updateClock();
+  b.classList.toggle('labcustom', CUSTOM.label !== 'default'); applyLabel(); clockKick();
 }
-function saveCustom() { store.set(K.custom, JSON.stringify(CUSTOM)); applyCustom(); buildCustom(); }
+function saveCustom() { store.set(K.custom, JSON.stringify(CUSTOM)); applyCustom(); setBackground(curPal); buildCustom(); }
 function buildCustom() {
   const box = $('customBody'); box.innerHTML = '';
   const sec = (title, note) => { const h = document.createElement('h3'); h.textContent = title; box.appendChild(h); if (note) { const n = document.createElement('p'); n.className = 'note'; n.textContent = note; box.appendChild(n); } const d = document.createElement('div'); d.className = 'chips'; box.appendChild(d); return d; };
@@ -874,12 +903,13 @@ function buildCustom() {
   };
   let d = sec('Record speed'); CUSTOM_OPTS.spin.forEach(([l, v]) => chip(d, 'spin', l, v));
   d = sec('Vinyl colour'); CUSTOM_OPTS.vinyl.forEach(([l, v]) => chip(d, 'vinyl', l, v, 'sw', v));
-  d = sec('Record label', 'Shown in the Retro look.'); CUSTOM_OPTS.label.forEach(([l, v]) => chip(d, 'label', l, v, v === 'default' ? 'sw def' : v === 'cover' ? 'sw cover' : 'sw', v === 'default' || v === 'cover' ? '' : LABELS[v][0]));
+  d = sec('Background', 'Cover colours follows the song\'s artwork.'); CUSTOM_OPTS.bg.forEach(([l, v]) => { const P = BG_FIXED[v] || (v === 'theme' ? DEFAULT_PAL : null); chip(d, 'bg', l, v, v === 'cover' ? 'sw cover' : 'sw', P ? 'linear-gradient(135deg,rgb(' + P.L.join(',') + '),rgb(' + P.M.join(',') + ') 55%,rgb(' + P.D.join(',') + '))' : ''); });
+  d = sec('Record label', 'Cover colours matches the record label to the artwork.'); CUSTOM_OPTS.label.forEach(([l, v]) => chip(d, 'label', l, v, v === 'default' ? 'sw def' : v === 'cover' ? 'sw cover' : 'sw', v === 'default' || v === 'cover' ? '' : LABELS[v][0]));
   d = sec('Retro colours', 'Accent colour of the Retro look.'); CUSTOM_OPTS.pal.forEach(([l, v, col]) => chip(d, 'pal', l, v, 'sw', col));
   d = sec('Extras'); chip(d, 'clock', 'Clock in Ambient mode', true); d.lastChild.setAttribute('aria-pressed', String(!!CUSTOM.clock)); d.lastChild.onclick = () => { CUSTOM.clock = !CUSTOM.clock; saveCustom(); };
   chip(d, 'grain', 'Film grain', true); d.lastChild.setAttribute('aria-pressed', String(!!CUSTOM.grain)); d.lastChild.onclick = () => { CUSTOM.grain = !CUSTOM.grain; saveCustom(); };
 }
-function openCustom() { buildCustom(); $('customModal').hidden = false; if (window.closeNeedleMenu) closeNeedleMenu(); $('btnCustomClose').focus({ preventScroll: true }); }
+function openCustom() { buildCustom(); $('customModal').hidden = false; $('btnCustomClose').focus({ preventScroll: true }); }
 function closeCustom() { $('customModal').hidden = true; }
 /* ---------- like, share, add to queue, swipe ---------- */
 let likeFor = null;
@@ -1598,7 +1628,7 @@ function showGate({ error, keepTokens } = {}) {
 function hideGate() { $('gate').classList.remove('show'); }
 
 function setAmbient(on) {
-  document.body.classList.toggle('ambient', on); document.body.classList.remove('peek'); if (window.closeNeedleMenu) closeNeedleMenu(); fitScene();
+  document.body.classList.toggle('ambient', on); document.body.classList.remove('peek'); if (window.closeNeedleMenu) closeNeedleMenu(); fitScene(); clockKick();
   store.set(K.ambient, on ? '1' : '0');
 }
 let peekT;
@@ -1986,8 +2016,8 @@ function bind() {
   const menu = $('menu'), gear = $('btnMenu');
   const setMenu = (on) => { menu.hidden = !on; gear.setAttribute('aria-expanded', String(on)); gear.classList.toggle('on', on); if (on) { const f = menu.querySelector('button:not([hidden])'); if (f && document.activeElement === gear) { /* keep focus on the gear for touch; keyboard users arrow in */ } } else if (document.activeElement && menu.contains(document.activeElement)) gear.focus({ preventScroll: true }); };
   gear.onclick = (e) => { e.stopPropagation(); setMenu(menu.hidden); };
-  menu.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b && !b.hasAttribute('aria-pressed')) setTimeout(() => setMenu(false), 60); });   // actions close the menu, switches (sounds, dark, look) stay open so you see them change
-  document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !e.target.closest('.tools')) setMenu(false); });
+  // the menu stays open until you press one of its Close buttons (or the gear again / Esc)
+  ['btnMenuClose', 'btnMenuClose2'].forEach((id) => { $(id).onclick = () => setMenu(false); });
   menu.addEventListener('keydown', (e) => {
     const list = [...menu.querySelectorAll('button:not([hidden])')], i = list.indexOf(document.activeElement);
     if (e.key === 'ArrowDown') { e.preventDefault(); list[(i + 1) % list.length].focus(); } else if (e.key === 'ArrowUp') { e.preventDefault(); list[(i - 1 + list.length) % list.length].focus(); }
@@ -1995,7 +2025,7 @@ function bind() {
   window.closeNeedleMenu = () => setMenu(false);
   $('btnCustom').onclick = openCustom; $('btnCustomClose').onclick = closeCustom; $('customModal').addEventListener('pointerdown', (e) => { if (e.target === $('customModal')) closeCustom(); });
   $('btnCustomReset').onclick = () => { CUSTOM = Object.assign({}, CUSTOM_DEF); saveCustom(); };
-  setInterval(() => { if (!document.hidden) updateClock(); }, 20000);
+  setInterval(() => { if (!document.hidden) clockKick(); }, 20000); document.addEventListener('visibilitychange', clockKick);
   $('btnLike').onclick = toggleLike; $('btnShare').onclick = shareSong; if ($('rrDQueue')) $('rrDQueue').onclick = rrAddQueue; bindSwipe();
   $('btnShuffle').onclick = setShuffle; $('btnRepeat').onclick = cycleRepeat; $('btnSleep').onclick = cycleSleep;
   $('volRange').addEventListener('input', (e) => setVolume(Number(e.target.value)));
@@ -2030,8 +2060,7 @@ function bind() {
     if (RR.open && e.key !== 'Escape' && e.key !== 'p' && e.key !== 'P') return;   // the Record Room is modal: its own buttons handle keys
     if (e.code === 'Space') { e.preventDefault(); control(S.isPlaying ? 'pause' : 'play'); }
     else if (e.key === 'q' || e.key === 'Q') openQueue();
-    else if (e.key === 'Escape' && !$('menu').hidden) closeNeedleMenu();
-    else if (e.key === 'Escape') { if (!$('customModal').hidden) closeCustom(); else if (!$('devicesModal').hidden || !$('queueModal').hidden || !$('lyPickModal').hidden) { closeLyPick(); closeQueue(); $('devicesModal').hidden = true; WAIT.ctx = null; } else if (!rrEscape()) { /* nothing open */ } }
+    else if (e.key === 'Escape') { if (!$('customModal').hidden) closeCustom(); else if (!$('devicesModal').hidden || !$('queueModal').hidden || !$('lyPickModal').hidden) { closeLyPick(); closeQueue(); $('devicesModal').hidden = true; WAIT.ctx = null; } else if (!rrEscape()) { if (!$('menu').hidden) closeNeedleMenu(); } }
     else if (e.key === 'p' || e.key === 'P') (RR.open ? rrClose() : rrOpen());
     else if (e.key === 's' || e.key === 'S') setSfx(!SFX.on);
     else if (e.key === 'ArrowRight') control('next');

@@ -12,7 +12,7 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="style.css?v=35">
+<link rel="stylesheet" href="style.css?v=36">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shrikhand&family=Special+Elite&display=swap" media="print" onload="this.media='all'">
 </head>
@@ -90,6 +90,7 @@
   <div class="tools">
     <button class="icon sm" id="btnMenu" title="Settings" aria-label="Settings and options" aria-haspopup="menu" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M10.49 3.84 L10.73 0.87 L13.27 0.87 L13.51 3.84 L14.77 4.18 L16.47 1.73 L18.66 3.00 L17.39 5.69 L18.31 6.61 L21.00 5.34 L22.27 7.53 L19.82 9.23 L20.16 10.49 L23.13 10.73 L23.13 13.27 L20.16 13.51 L19.82 14.77 L22.27 16.47 L21.00 18.66 L18.31 17.39 L17.39 18.31 L18.66 21.00 L16.47 22.27 L14.77 19.82 L13.51 20.16 L13.27 23.13 L10.73 23.13 L10.49 20.16 L9.23 19.82 L7.53 22.27 L5.34 21.00 L6.61 18.31 L5.69 17.39 L3.00 18.66 L1.73 16.47 L4.18 14.77 L3.84 13.51 L0.87 13.27 L0.87 10.73 L3.84 10.49 L4.18 9.23 L1.73 7.53 L3.00 5.34 L5.69 6.61 L6.61 5.69 L5.34 3.00 L7.53 1.73 L9.23 4.18Z M6.6 12.0 a5.4 5.4 0 1 0 10.8 0 a5.4 5.4 0 1 0 -10.8 0Z"/></svg></button>
     <div id="menu" role="menu" aria-label="Options" hidden>
+    <div class="menu-head"><span>Options</span><button type="button" class="menu-close" id="btnMenuClose" aria-label="Close options">&#10005; Close</button></div>
     <button class="icon sm" role="menuitem" id="btnLibrary" title="Record Room (P)" aria-label="Open the Record Room, your collection" aria-expanded="false"><svg viewBox="0 0 24 24"><rect x="3" y="10" width="18" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6.500 10V5.500M10.500 10V4M14.500 10V5M18 10V6.500" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M8 15h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="lbl">Record Room</span></button>
     <button class="icon sm" role="menuitem" id="btnLyrics" title="Lyrics (L)" aria-label="Show lyrics" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 10h10M4 15h16M4 20h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="lbl">Lyrics</span></button>
     <button class="icon sm" role="menuitem" id="btnQueue" title="Up next (Q)" aria-label="Show the queue"><svg viewBox="0 0 24 24"><path d="M4 6h12M4 11h12M4 16h7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M16 15l5 3-5 3z" fill="currentColor"/><path d="M13 15v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="lbl">Up next</span></button>
@@ -106,7 +107,8 @@
     <button class="icon sm" role="menuitem" id="btnAmbient" title="Ambient mode (A)" aria-label="Ambient mode"><svg viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg><span class="lbl">Ambient mode</span></button>
     <button class="icon sm" role="menuitem" id="btnFull" title="Fullscreen (F)" aria-label="Fullscreen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="lbl">Full screen</span></button>
     <button class="icon sm" role="menuitem" id="btnLogout" title="Disconnect Spotify" aria-label="Disconnect Spotify"><svg viewBox="0 0 24 24"><path d="M10 4H5v16h5M15 8l4 4-4 4M19 12H9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Disconnect Spotify</span></button>
-      <div class="menu-ver" aria-hidden="true">Build 35</div>
+      <button type="button" class="menu-close wide" id="btnMenuClose2" aria-label="Close options">&#10005; Close options</button>
+      <div class="menu-ver" aria-hidden="true">Build 36</div>
     </div>
   </div>
 </header>
@@ -241,7 +243,19 @@
   </div>
 </section>
 
-<div id="ambClock" aria-hidden="true"></div>
+<div id="ambClock" aria-hidden="true">
+  <svg class="ck-dial" viewBox="-50 -50 100 100">
+    <circle class="ck-ring" r="48.5"/><circle class="ck-face" r="45"/>
+    <circle class="ck-groove" r="41"/><circle class="ck-groove" r="38.6"/>
+    <g id="ckTicks"></g>
+    <text class="ck-brand" y="-17">NEEDLE</text><text class="ck-brand sm" y="25">STEREO &#183; 33&#8531;</text>
+    <g id="ckH"><path class="ck-h" d="M-2.6 5 L-1.5 -23 L0 -27 L1.5 -23 L2.6 5Z"/></g>
+    <g id="ckM"><path class="ck-m" d="M-1.9 6 L-1 -35 L0 -39 L1 -35 L1.9 6Z"/></g>
+    <g id="ckS"><line class="ck-s" y1="13" y2="-38"/><circle class="ck-sd" cy="-31" r="2.6"/><circle class="ck-sw" cy="13" r="2.2"/></g>
+    <circle class="ck-hub" r="3.2"/><circle class="ck-pin" r="1.1"/>
+  </svg>
+  <div class="ck-txt"><div class="ck-greet"></div><div class="ck-time"><span class="h"></span><i>:</i><span class="m"></span><b class="ap"></b></div><div class="ck-date"></div></div>
+</div>
 
 <section id="customModal" class="modal" hidden>
   <div class="card" id="customCard" role="dialog" aria-label="Customize">
@@ -265,7 +279,7 @@
 
 <div id="toast" role="status"></div>
 
-<script src="config.js?v=35"></script>
-<script src="app.js?v=35"></script>
+<script src="config.js?v=36"></script>
+<script src="app.js?v=36"></script>
 </body>
 </html>

@@ -989,10 +989,49 @@ body[data-pal="plum"] .room{--rr-orange:#9a3f78;--rr-orange-d:#6c2754}
 body[data-pal="cobalt"] .room{--rr-orange:#2f6fbf;--rr-orange-d:#1f4e8c}
 body.retro[data-pal] .room[data-theme="dark"]{--rr-orange-d:var(--rr-butter)}
 body.nograin .grain,body.nograin #bg::after{display:none}
-#ambClock{position:fixed;z-index:9;left:50%;bottom:calc(env(safe-area-inset-bottom) + 28px);transform:translateX(-50%);opacity:0;pointer-events:none;transition:opacity .8s ease;
-  font:300 clamp(34px,6vw,64px)/1 "Avenir Next","SF Pro Display",-apple-system,system-ui,sans-serif;letter-spacing:.06em;color:rgba(240,227,199,.9);text-shadow:0 2px 14px rgba(0,0,0,.45)}
-body.retro #ambClock{font-family:var(--r-display);font-weight:400;color:var(--r-butter);text-shadow:2px 2px 0 var(--r-orange-d),0 6px 18px rgba(0,0,0,.4)}
-body.ambient.clock:not(.peek) #ambClock{opacity:1}
+#ambClock{position:fixed;z-index:9;left:calc(env(safe-area-inset-left) + 26px);bottom:calc(env(safe-area-inset-bottom) + 26px);display:flex;align-items:center;gap:16px;padding:12px 24px 12px 12px;border-radius:999px 28px 28px 999px;
+  opacity:0;pointer-events:none;transform:translateY(14px);transition:opacity .8s ease,transform .8s cubic-bezier(.16,1,.3,1);
+  --ck-ink:var(--cream);--ck-face:rgba(22,13,8,.62);--ck-ring:var(--gold);--ck-hand:var(--gold-hi);--ck-acc:var(--gold);
+  background:rgba(20,12,8,.42);-webkit-backdrop-filter:blur(14px) saturate(1.2);backdrop-filter:blur(14px) saturate(1.2);border:1px solid rgba(240,227,199,.22);box-shadow:0 14px 34px rgba(0,0,0,.4);color:var(--ck-ink)}
+body.retro #ambClock{--ck-ink:var(--r-cream);--ck-face:var(--r-cream);--ck-ring:var(--r-orange);--ck-hand:var(--r-ink);--ck-acc:var(--r-orange);background:var(--r-brown);background-image:var(--r-wood);border:3px solid var(--r-butter);box-shadow:0 6px 0 rgba(0,0,0,.55),0 20px 36px rgba(0,0,0,.4)}
+body.ambient.clock:not(.peek) #ambClock{opacity:1;transform:none}
+.ck-dial{flex:none;width:clamp(104px,17vmin,164px);height:auto;overflow:visible;filter:drop-shadow(0 6px 10px rgba(0,0,0,.45))}
+.ck-ring{fill:var(--ck-ring);stroke:rgba(0,0,0,.4);stroke-width:.6}
+.ck-face{fill:var(--ck-face);stroke:rgba(0,0,0,.35);stroke-width:.5}
+.ck-groove{fill:none;stroke:var(--ck-ink);stroke-opacity:.16;stroke-width:.35}
+.ck-t{stroke:var(--ck-ink);stroke-opacity:.55;stroke-width:.7;stroke-linecap:round}.ck-t.big{stroke-opacity:1;stroke-width:1.5;stroke:var(--ck-acc)}
+body.retro .ck-t{stroke:var(--r-ink)}body.retro .ck-t.big{stroke:var(--r-orange)}
+.ck-num{fill:var(--ck-ink);font:600 8px/1 "Avenir Next",system-ui,sans-serif;text-anchor:middle;dominant-baseline:central;opacity:.85}
+body.retro .ck-num{fill:var(--r-ink);font-family:var(--r-display);font-weight:400;font-size:9px}
+.ck-brand{fill:var(--ck-acc);font:700 5.2px/1 "Avenir Next",system-ui,sans-serif;letter-spacing:.32em;text-anchor:middle;dominant-baseline:central}.ck-brand.sm{font-size:3.2px;letter-spacing:.22em;opacity:.8}
+body.retro .ck-brand{font-family:var(--r-display);font-weight:400;font-size:6px;letter-spacing:.14em}body.retro .ck-brand.sm{font-family:var(--r-type);font-size:3.4px}
+.ck-h,.ck-m{fill:var(--ck-hand);stroke:rgba(0,0,0,.35);stroke-width:.4;stroke-linejoin:round;filter:drop-shadow(1px 2px 1px rgba(0,0,0,.4))}
+body.retro .ck-m{fill:var(--r-brown-2)}
+.ck-s{stroke:var(--ck-acc);stroke-width:.9;stroke-linecap:round}.ck-sd,.ck-sw{fill:var(--ck-acc);stroke:rgba(0,0,0,.35);stroke-width:.4}
+.ck-hub{fill:var(--ck-hand);stroke:rgba(0,0,0,.4);stroke-width:.4}.ck-pin{fill:var(--ck-acc)}
+.ck-txt{display:flex;flex-direction:column;gap:3px;min-width:0;white-space:nowrap}
+.ck-greet{font-size:clamp(11px,1.5vmin + 6px,15px);letter-spacing:.2em;text-transform:uppercase;opacity:.75}
+.ck-time{display:flex;align-items:baseline;gap:2px;font:300 clamp(40px,7.5vmin,72px)/1 "Avenir Next","SF Pro Display",-apple-system,system-ui,sans-serif;letter-spacing:.02em;text-shadow:0 2px 14px rgba(0,0,0,.45);font-variant-numeric:tabular-nums}
+.ck-time i{font-style:normal;animation:ckBlink 1s steps(2,start) infinite;position:relative;top:-.06em}
+.ck-time .ap{font-size:.3em;font-weight:600;letter-spacing:.12em;margin-left:.5em;padding:.2em .55em;border-radius:999px;background:var(--ck-acc);color:#1a0f08;align-self:center;text-shadow:none}
+.ck-date{font-size:clamp(12px,1.7vmin + 6px,17px);opacity:.85;letter-spacing:.04em}
+body.retro .ck-time{font-family:var(--r-display);font-weight:400;color:var(--r-butter);text-shadow:3px 3px 0 var(--r-orange-d),0 8px 18px rgba(0,0,0,.4)}
+body.retro .ck-greet,body.retro .ck-date{font-family:var(--r-type)}
+@keyframes ckBlink{50%{opacity:.15}}
+@media (prefers-reduced-motion:reduce){.ck-time i{animation:none}#ambClock{transition:opacity .3s}}
+@media (max-width:700px){#ambClock{gap:10px;padding:8px 16px 8px 8px}.ck-greet{display:none}}
+/* ---- classic look: a custom record label colour applies here too ---- */
+body:not(.retro).labcustom .label{color:var(--lab-ink);background:radial-gradient(circle closest-side,rgba(255,235,200,.3),transparent 70%),radial-gradient(circle closest-side,var(--lab-a),var(--lab-b));
+  box-shadow:inset 0 0 0 calc(var(--u)*.0042) rgba(255,240,210,.85),inset 0 0 0 calc(var(--u)*.0105) rgba(0,0,0,.22),0 0 0 calc(var(--u)*.022) #040404}
+body:not(.retro).labcustom .ring-text{fill:var(--lab-ink)}body:not(.retro).labcustom .l-title{color:var(--lab-title)}body:not(.retro).labcustom .l-artist{color:var(--lab-ink);opacity:1}
+/* ---- options menu: head + Close buttons ---- */
+#menu .menu-head{position:sticky;top:-8px;z-index:2;display:flex;align-items:center;justify-content:space-between;margin:-8px -8px 4px;padding:10px 10px 8px 16px;background:rgba(24,14,8,.98);border-bottom:1px solid rgba(240,227,199,.15);border-radius:16px 16px 0 0;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--cream)}
+#menu .menu-close{font:inherit;font-size:13px;letter-spacing:.06em;text-transform:none;min-height:36px;padding:0 14px;border-radius:999px;border:1px solid rgba(240,227,199,.4);background:transparent;color:var(--cream);cursor:pointer}
+#menu .menu-close:active{transform:scale(.95)}
+#menu .menu-close.wide{display:block;width:100%;min-height:44px;margin:6px 0 2px;background:var(--cream);color:#2a1a10;border-color:var(--cream);font-weight:600}
+body.retro #menu .menu-head{background:var(--r-brown);background-image:var(--r-wood);font-family:var(--r-type);border-bottom-color:rgba(246,234,208,.3)}
+body.retro #menu .menu-close{font-family:var(--r-type);color:var(--r-cream);border:2px solid rgba(246,234,208,.55)}
+body.retro #menu .menu-close.wide{background:var(--r-butter);color:var(--r-ink);border:2px solid var(--r-ink);box-shadow:0 3px 0 var(--r-ink)}
 #customCard{width:min(100%,520px);max-height:min(90vh,760px);overflow-y:auto;text-align:left;overscroll-behavior:contain}
 #customCard h2{text-align:center}
 #customBody h3{margin:18px 0 8px;font-size:12px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;opacity:.7}

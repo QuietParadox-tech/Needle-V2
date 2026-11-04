@@ -98,10 +98,14 @@ The look setting covers everything: in Classic the Record Room, dialogs, lyrics 
 ## Customize (Menu → Customize…)
 - **Record speed** – Lazy, Slow, 33⅓ rpm.
 - **Vinyl colour** – Black, Crimson, Navy, Forest, Amber, Ivory.
-- **Record label** – Orange, Gold, Cream, Teal, Pink, Red, or *Cover colours* (follows the album art). Retro look only.
+- **Background** – *Cover colours* (follows the album art), Default, Espresso, Midnight, Pine, Wine or Sunset. Works in both looks.
+- **Record label** – Orange, Gold, Cream, Teal, Pink, Red, or *Cover colours* (follows the album art). Works in both Retro and Classic.
 - **Retro colours** – Ember, Teal, Avocado, Plum, Cobalt accent palettes.
-- **Clock in Ambient mode** and a **Film grain** toggle.
+- **Clock in Ambient mode** – an animated dial with a sweeping second hand, a digital readout, a greeting and the date; styled per look. And a **Film grain** toggle.
 - **Reset to defaults**. Everything is saved in your browser (`localStorage: needle.custom`).
 
 ## Lock screen / Control Centre
 iOS shows the Spotify player's hidden iframe ("Spotify Embedded Player") as the Now Playing app. NEEDLE plays a silent looping audio clip of its own and sets Media Session metadata (title, artist, artwork) so the song can appear there. This is a best-effort workaround and can vary by iOS version.
+
+## Options menu
+The gear menu stays open until you press **Close** (top or bottom), tap the gear again, or press Esc.
