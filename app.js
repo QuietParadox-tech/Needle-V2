@@ -13,7 +13,7 @@ const OPT_SCOPES = ['user-read-recently-played', 'user-library-modify'];       /
 const SCOPES = NEED_SCOPES.concat(OPT_SCOPES).join(' ');
 const API = 'https://api.spotify.com/v1';
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
-const K = { tokens: 'needle.tokens', verifier: 'needle.verifier', state: 'needle.state', cid: 'needle.clientId', ambient: 'needle.ambient', lyrics: 'needle.lyrics', local: 'needle.local', sfx: 'needle.sfx', theme: 'needle.theme', style: 'needle.style', custom: 'needle.custom' };
+const K = { tokens: 'needle.tokens', verifier: 'needle.verifier', state: 'needle.state', cid: 'needle.clientId', ambient: 'needle.ambient', lyrics: 'needle.lyrics', local: 'needle.local', sfx: 'needle.sfx', theme: 'needle.theme', style: 'needle.style', custom: 'needle.custom', tour: 'needle.tour', rrstack: 'needle.rrstack' };
 
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -251,7 +251,7 @@ function renderPlaying() {
   document.body.classList.toggle('playing', S.isPlaying);
   $('deviceCap').textContent = MUTE.on ? 'Scrubbing · song paused' : S.demo ? 'DEMO MODE · not connected to Spotify'
     : S.device ? 'On ' + S.device.name : '';
-  renderArm(); tick(true); updateWakeLock(); rrSync(); keepSync();
+  renderArm(); tick(true); updateWakeLock(); rrSync(); keepSync(); crackleSync();
 }
 const fmt = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 let tickN = 0;
@@ -297,6 +297,7 @@ function loadImage(url) {
 function setSleeve(url, cors) {
   const A = $('artA'), B = $('artB');
   const next = S.artOn === 'A' ? B : A, prev = S.artOn === 'A' ? A : B;
+  document.documentElement.style.setProperty('--cover', url ? 'url("' + url + '")' : 'none');
   if (!url) { A.classList.remove('show'); B.classList.remove('show'); return; }
   if (cors) next.crossOrigin = 'anonymous'; else next.removeAttribute('crossorigin');
   next.src = url; next.classList.add('show'); prev.classList.remove('show');
@@ -406,6 +407,7 @@ function setBackground(p) {
   root.backgroundImage = 'linear-gradient(90deg,' + c3(p.L) + ' 0%,' + c3(p.M) + ' 38%,' + c3(p.D) + ' 72%,' + c3(p.M) + ' 100%)';
   root.backgroundRepeat = 'repeat-y'; root.backgroundSize = '100% 100vh'; root.backgroundPosition = '0 0';
   if (CUSTOM.label === 'cover') applyLabel();
+  vinylPattern();
   const meta = document.querySelector('meta[name=theme-color]');
   if (meta) meta.content = 'rgb(' + p.M.map(Math.round).join(',') + ')';
 }
@@ -836,12 +838,15 @@ async function skipTo(i) {                                  // Spotify has no "j
 }
 
 /* ---------- customize: record speed, vinyl colour, label, retro palette, ambient clock, grain ---------- */
-const CUSTOM_DEF = { spin: '10s', vinyl: '#0b0b0b', label: 'default', bg: 'cover', pal: 'ember', clock: false, grain: true };
+const CUSTOM_DEF = { spin: '10s', vinyl: '#0b0b0b', label: 'default', bg: 'cover', pal: 'ember', clock: false, grain: true, ckStyle: 'full', ck24: false, crackle: false, idle: 0, vpat: 'solid', peek: true, glow: true };
 const CUSTOM_OPTS = {
   spin: [['Lazy', '14s'], ['Slow', '10s'], ['33⅓ rpm', '1.8s']],
   vinyl: [['Black', '#0b0b0b'], ['Crimson', '#4a0d14'], ['Navy', '#0c1f4a'], ['Forest', '#0d3322'], ['Amber', '#4a2c0a'], ['Ivory', '#b8b09c']],
   bg: [['Cover colours', 'cover'], ['Default', 'theme'], ['Espresso', 'espresso'], ['Midnight', 'midnight'], ['Pine', 'forest'], ['Wine', 'wine'], ['Sunset', 'sunset']],
-  label: [['Theme', 'default'], ['Orange', 'orange'], ['Gold', 'gold'], ['Cream', 'cream'], ['Teal', 'teal'], ['Pink', 'pink'], ['Red', 'red'], ['Cover colours', 'cover']],
+  ckStyle: [['Dial + digital', 'full'], ['Dial only', 'dial'], ['Digital only', 'digital']],
+  idle: [['Off', 0], ['1 min', 60], ['5 min', 300], ['10 min', 600]],
+  vpat: [['Solid', 'solid'], ['Splatter', 'splatter'], ['Starburst', 'burst'], ['Marble', 'marble']],
+  label: [['Theme', 'default'], ['Orange', 'orange'], ['Gold', 'gold'], ['Cream', 'cream'], ['Teal', 'teal'], ['Pink', 'pink'], ['Red', 'red'], ['Cover colours', 'cover'], ['Cover art', 'art']],
   pal: [['Ember', 'ember', '#c8541c'], ['Teal', 'teal', '#1f8a8a'], ['Avocado', 'avocado', '#7a9a2c'], ['Plum', 'plum', '#9a3f78'], ['Cobalt', 'cobalt', '#2f6fbf']],
 };
 const BG_FIXED = {
@@ -875,10 +880,10 @@ function updateClock() {
   const box = $('ambClock'); if (!box) return; clockBuild();
   const d = new Date(), sec = d.getSeconds() + d.getMilliseconds() / 1000, min = d.getMinutes() + sec / 60, hr = (d.getHours() % 12) + min / 60;
   $('ckS').setAttribute('transform', 'rotate(' + (sec * 6).toFixed(2) + ')'); $('ckM').setAttribute('transform', 'rotate(' + (min * 6).toFixed(2) + ')'); $('ckH').setAttribute('transform', 'rotate(' + (hr * 30).toFixed(2) + ')');
-  const H = d.getHours(), key = H + ':' + d.getMinutes() + ':' + d.getDate();
+  const H = d.getHours(), key = H + ':' + d.getMinutes() + ':' + d.getDate() + ':' + (CUSTOM.ck24 ? 24 : 12);
   if (key !== CK.key) {
     CK.key = key; const q = (c) => box.querySelector(c);
-    q('.ck-time .h').textContent = H % 12 || 12; q('.ck-time .m').textContent = String(d.getMinutes()).padStart(2, '0'); q('.ap').textContent = H < 12 ? 'AM' : 'PM';
+    q('.ck-time .h').textContent = CUSTOM.ck24 ? String(H).padStart(2, '0') : H % 12 || 12; q('.ck-time .m').textContent = String(d.getMinutes()).padStart(2, '0'); q('.ap').textContent = CUSTOM.ck24 ? '' : H < 12 ? 'AM' : 'PM'; q('.ap').hidden = !!CUSTOM.ck24;
     q('.ck-greet').textContent = H < 5 ? 'Late night spin' : H < 12 ? 'Good morning' : H < 17 ? 'Good afternoon' : H < 21 ? 'Good evening' : 'Night session';
     q('.ck-date').textContent = d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' });
   }
@@ -890,27 +895,268 @@ function applyCustom() {
   r.setProperty('--spin', CUSTOM.spin); r.setProperty('--vinyl', CUSTOM.vinyl);
   if (CUSTOM.pal === 'ember') delete b.dataset.pal; else b.dataset.pal = CUSTOM.pal;
   b.classList.toggle('clock', !!CUSTOM.clock); b.classList.toggle('nograin', !CUSTOM.grain);
-  b.classList.toggle('labcustom', CUSTOM.label !== 'default'); applyLabel(); clockKick();
+  b.classList.toggle('nopeek', !CUSTOM.peek); b.classList.toggle('noglow', !CUSTOM.glow); b.dataset.ck = CUSTOM.ckStyle; CK.key = ''; b.classList.toggle('labcustom', CUSTOM.label !== 'default' && CUSTOM.label !== 'art'); b.classList.toggle('labart', CUSTOM.label === 'art'); applyLabel(); vinylPattern(); clockKick(); crackleSync();
 }
+/* ---------- vinyl crackle: a soft synthesised hiss and pops that play under the music ---------- */
+const CR = { ctx: null, g: null };
+function crackleWant() { return !!CUSTOM.crackle && S.isPlaying && !document.hidden; }
+function crackleSync() {
+  try {
+    if (crackleWant()) {
+      if (!CR.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+        const c = new AC(), sr = c.sampleRate, n = sr * 5, buf = c.createBuffer(1, n, sr), d = buf.getChannelData(0); let last = 0;
+        for (let i = 0; i < n; i++) { last = last * 0.96 + (Math.random() * 2 - 1) * 0.04; d[i] = last * 0.5; }
+        for (let k = 0; k < 26; k++) { const at = Math.floor(Math.random() * (n - 800)), amp = 0.25 + Math.random() * 0.6, len = 40 + Math.floor(Math.random() * 300); for (let j = 0; j < len; j++) d[at + j] += (Math.random() * 2 - 1) * amp * Math.exp(-j / (len / 4)); }
+        const src = c.createBufferSource(); src.buffer = buf; src.loop = true; const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 500; const g = c.createGain(); g.gain.value = 0;
+        src.connect(hp); hp.connect(g); g.connect(c.destination); src.start(); CR.ctx = c; CR.g = g;
+      }
+      if (CR.ctx.state === 'suspended') CR.ctx.resume();
+      CR.g.gain.setTargetAtTime(0.22, CR.ctx.currentTime, 0.4);
+    } else if (CR.ctx) {
+      CR.g.gain.setTargetAtTime(0, CR.ctx.currentTime, 0.2);
+    }
+  } catch { /* no audio, no crackle */ }
+}
+document.addEventListener('pointerdown', () => { if (CR.ctx && CR.ctx.state === 'suspended' && crackleWant()) CR.ctx.resume(); }, true);
+document.addEventListener('visibilitychange', crackleSync);
+/* ---------- auto Ambient mode after a while without touches ---------- */
+let idleAt = Date.now();
+['pointerdown', 'keydown', 'touchstart', 'wheel'].forEach((ev) => addEventListener(ev, () => { idleAt = Date.now(); }, { passive: true, capture: true }));
+setInterval(() => {
+  const b = document.body;
+  if (!CUSTOM.idle || !S.isPlaying || b.classList.contains('ambient') || document.hidden || Date.now() - idleAt < CUSTOM.idle * 1000) return;
+  if (!$('menu').hidden || RR.open || ['customModal', 'devicesModal', 'queueModal', 'lyPickModal'].some((id) => $(id) && !$(id).hidden)) return;
+  setAmbient(true);
+}, 5000);
 function saveCustom() { store.set(K.custom, JSON.stringify(CUSTOM)); applyCustom(); setBackground(curPal); buildCustom(); }
 function buildCustom() {
   const box = $('customBody'); box.innerHTML = '';
-  const sec = (title, note) => { const h = document.createElement('h3'); h.textContent = title; box.appendChild(h); if (note) { const n = document.createElement('p'); n.className = 'note'; n.textContent = note; box.appendChild(n); } const d = document.createElement('div'); d.className = 'chips'; box.appendChild(d); return d; };
+  const sec = (title, note) => { const h = document.createElement('h3'); h.textContent = title; box.appendChild(h); if (note) { const n = document.createElement('p'); n.className = 'note'; n.textContent = note; box.appendChild(n); } const d = document.createElement('div'); d.className = 'chips'; d.dataset.sec = title; box.appendChild(d); return d; };
   const chip = (d, key, label, val, cls, bg) => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'chip' + (cls ? ' ' + cls : ''); b.setAttribute('aria-pressed', String(CUSTOM[key] === val));
     if (cls && cls.includes('sw')) { b.setAttribute('aria-label', label); b.title = label; if (bg) b.style.background = bg; } else b.textContent = label;
     b.onclick = () => { CUSTOM[key] = val; saveCustom(); }; d.appendChild(b);
   };
-  let d = sec('Record speed'); CUSTOM_OPTS.spin.forEach(([l, v]) => chip(d, 'spin', l, v));
-  d = sec('Vinyl colour'); CUSTOM_OPTS.vinyl.forEach(([l, v]) => chip(d, 'vinyl', l, v, 'sw', v));
-  d = sec('Background', 'Cover colours follows the song\'s artwork.'); CUSTOM_OPTS.bg.forEach(([l, v]) => { const P = BG_FIXED[v] || (v === 'theme' ? DEFAULT_PAL : null); chip(d, 'bg', l, v, v === 'cover' ? 'sw cover' : 'sw', P ? 'linear-gradient(135deg,rgb(' + P.L.join(',') + '),rgb(' + P.M.join(',') + ') 55%,rgb(' + P.D.join(',') + '))' : ''); });
-  d = sec('Record label', 'Cover colours matches the record label to the artwork.'); CUSTOM_OPTS.label.forEach(([l, v]) => chip(d, 'label', l, v, v === 'default' ? 'sw def' : v === 'cover' ? 'sw cover' : 'sw', v === 'default' || v === 'cover' ? '' : LABELS[v][0]));
-  d = sec('Retro colours', 'Accent colour of the Retro look.'); CUSTOM_OPTS.pal.forEach(([l, v, col]) => chip(d, 'pal', l, v, 'sw', col));
-  d = sec('Extras'); chip(d, 'clock', 'Clock in Ambient mode', true); d.lastChild.setAttribute('aria-pressed', String(!!CUSTOM.clock)); d.lastChild.onclick = () => { CUSTOM.clock = !CUSTOM.clock; saveCustom(); };
-  chip(d, 'grain', 'Film grain', true); d.lastChild.setAttribute('aria-pressed', String(!!CUSTOM.grain)); d.lastChild.onclick = () => { CUSTOM.grain = !CUSTOM.grain; saveCustom(); };
+  const grp = (t) => { const g = document.createElement('div'); g.className = 'grp'; g.textContent = t; box.appendChild(g); };
+  const tog = (d, label, get, set) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = label; b.setAttribute('aria-pressed', String(!!get())); b.onclick = () => { set(!get()); saveCustom(); }; d.appendChild(b); };
+  const act = (d, label, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = label; b.onclick = fn; d.appendChild(b); };
+  let d;
+  grp('The record');
+    d = sec('Record speed'); CUSTOM_OPTS.spin.forEach(([l, v]) => chip(d, 'spin', l, v));
+    d = sec('Vinyl colour'); CUSTOM_OPTS.vinyl.forEach(([l, v]) => chip(d, 'vinyl', l, v, 'sw', v));
+    d = sec('Vinyl pattern', 'Painted from the cover colours of each song.'); CUSTOM_OPTS.vpat.forEach(([l, v]) => chip(d, 'vpat', l, v));
+    d = sec('Record label', 'Cover colours matches the label to the artwork; Cover art puts the whole cover on the label.'); CUSTOM_OPTS.label.forEach(([l, v]) => chip(d, 'label', l, v, v === 'default' ? 'sw def' : v === 'cover' ? 'sw cover' : v === 'art' ? 'sw art' : 'sw', v === 'default' || v === 'cover' || v === 'art' ? '' : LABELS[v][0]));
+  d = sec('Record extras'); tog(d, 'Vinyl crackle', () => CUSTOM.crackle, (v) => { CUSTOM.crackle = v; });
+  grp('Record Room');
+  d = sec('View', 'How your collection is laid out.'); [['3D stack', true], ['Grid', false]].forEach(([l, v]) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = l; b.setAttribute('aria-pressed', String(!!RR.stack === v)); b.onclick = () => { RR.stack = v; store.set(K.rrstack, v ? '1' : '0'); if (RR.open) rrRender(true); buildCustom(); }; d.appendChild(b); });
+  d = sec('Stack details'); tog(d, 'Record peeking from the sleeve', () => CUSTOM.peek, (v) => { CUSTOM.peek = v; }); tog(d, 'Cover colour glow', () => CUSTOM.glow, (v) => { CUSTOM.glow = v; });
+  grp('Colours');
+    d = sec('Background', 'Cover colours follows the song\'s artwork.'); CUSTOM_OPTS.bg.forEach(([l, v]) => { const P = BG_FIXED[v] || (v === 'theme' ? DEFAULT_PAL : null); chip(d, 'bg', l, v, v === 'cover' ? 'sw cover' : 'sw', P ? 'linear-gradient(135deg,rgb(' + P.L.join(',') + '),rgb(' + P.M.join(',') + ') 55%,rgb(' + P.D.join(',') + '))' : ''); });
+    d = sec('Retro colours', 'Accent colour of the Retro look.'); CUSTOM_OPTS.pal.forEach(([l, v, col]) => chip(d, 'pal', l, v, 'sw', col));
+  grp('Clock and Ambient mode');
+  d = sec('Clock'); tog(d, 'Clock in Ambient mode', () => CUSTOM.clock, (v) => { CUSTOM.clock = v; }); tog(d, '24-hour clock', () => CUSTOM.ck24, (v) => { CUSTOM.ck24 = v; });
+    d = sec('Clock style', 'For Ambient mode.'); CUSTOM_OPTS.ckStyle.forEach(([l, v]) => chip(d, 'ckStyle', l, v));
+    d = sec('Auto Ambient mode', 'Switch to Ambient mode by itself after this long with no touches, while a song plays.'); CUSTOM_OPTS.idle.forEach(([l, v]) => chip(d, 'idle', l, v));
+  grp('Extras');
+  d = sec('Effects'); tog(d, 'Film grain', () => CUSTOM.grain, (v) => { CUSTOM.grain = v; });
+  d = sec('Help'); act(d, 'Take the guided tour', () => { closeCustom(); setTimeout(tourStart, 200); });
 }
 function openCustom() { buildCustom(); $('customModal').hidden = false; $('btnCustomClose').focus({ preventScroll: true }); }
 function closeCustom() { $('customModal').hidden = true; }
+/* ---------- vinyl patterns: splatter, starburst, marble, painted from the cover colours ---------- */
+function vinylPattern() {
+  const r = document.documentElement.style, kind = CUSTOM.vpat;
+  if (!kind || kind === 'solid') { r.removeProperty('--vpat'); VP.sig = ''; return; }
+  const p = curPal || DEFAULT_PAL, sig = kind + '|' + CUSTOM.vinyl + '|' + (S.trackId || '') + '|' + [p.L, p.A, p.B, p.M].join(';');
+  if (sig === VP.sig) return; VP.sig = sig;
+  let seed = 2166136261; for (let i = 0; i < sig.length; i++) { seed ^= sig.charCodeAt(i); seed = Math.imul(seed, 16777619); }
+  const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const N = 560, R = N / 2, c = document.createElement('canvas'); c.width = c.height = N; const g = c.getContext('2d'); if (!g) return;
+  const hsl = (col) => { const [r_, g_, b_] = col.map((v) => v / 255), mx = Math.max(r_, g_, b_), mn = Math.min(r_, g_, b_), l = (mx + mn) / 2, d = mx - mn; let h = 0, s = 0; if (d) { s = d / (1 - Math.abs(2 * l - 1)); h = mx === r_ ? ((g_ - b_) / d) % 6 : mx === g_ ? (b_ - r_) / d + 2 : (r_ - g_) / d + 4; h *= 60; if (h < 0) h += 360; } return [h, s, l]; };
+  const pop = (col, lo, hi) => { const [h, s, l] = hsl(col); return 'hsl(' + h.toFixed(0) + ',' + Math.round(Math.min(1, s * 1.3 + 0.12) * 100) + '%,' + Math.round(Math.max(lo, Math.min(hi, l)) * 100) + '%)'; };
+  const pals = [p.L, p.A, p.B, p.M].map((x) => pop(x, 0.5, 0.74)), pale = [p.L, p.B].map((x) => 'rgb(' + mix(x, [255, 255, 255], 0.65).map(Math.round).join(',') + ')');
+  g.fillStyle = CUSTOM.vinyl; g.fillRect(0, 0, N, N); g.save(); g.beginPath(); g.arc(R, R, R, 0, 7); g.clip(); g.translate(R, R);
+  const pick = (a) => a[Math.floor(rnd() * a.length)];
+  if (kind === 'splatter') {
+    for (let k = 0; k < 58; k++) {
+      const ang = rnd() * 6.2832, rad = R * (0.28 + rnd() * 0.7), x = Math.cos(ang) * rad, y = Math.sin(ang) * rad, sz = R * (0.012 + Math.pow(rnd(), 2) * 0.075), col = rnd() < 0.3 ? pick(pale) : pick(pals);
+      g.fillStyle = col; g.beginPath(); g.arc(x, y, sz, 0, 7); g.fill();
+      for (let j = 0; j < 3 + Math.floor(rnd() * 5); j++) { const a2 = rnd() * 6.2832, d2 = sz * (1 + rnd() * 1.6); g.beginPath(); g.arc(x + Math.cos(a2) * d2, y + Math.sin(a2) * d2, sz * (0.18 + rnd() * 0.4), 0, 7); g.fill(); }
+      const a3 = ang + (rnd() - 0.5) * 0.7, len = sz * (2.5 + rnd() * 6); g.beginPath(); g.moveTo(x + Math.cos(a3 + 1.57) * sz * 0.3, y + Math.sin(a3 + 1.57) * sz * 0.3); g.lineTo(x + Math.cos(a3) * len, y + Math.sin(a3) * len); g.lineTo(x + Math.cos(a3 - 1.57) * sz * 0.3, y + Math.sin(a3 - 1.57) * sz * 0.3); g.fill();
+    }
+    for (let k = 0; k < 90; k++) { const a = rnd() * 6.2832, d = R * (0.3 + rnd() * 0.69); g.fillStyle = pick(pals); g.beginPath(); g.arc(Math.cos(a) * d, Math.sin(a) * d, 1 + rnd() * 3.2, 0, 7); g.fill(); }
+  } else if (kind === 'burst') {
+    const n = 110;
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * 6.2832 + (rnd() - 0.5) * 0.05, r0 = R * (0.29 + rnd() * 0.05), r1 = R * (0.5 + rnd() * 0.48), w = (R * (0.01 + rnd() * 0.028)) / 2;
+      g.fillStyle = rnd() < 0.72 ? pick(pale) : pick(pals); g.globalAlpha = 0.55 + rnd() * 0.45;
+      g.beginPath(); g.moveTo(Math.cos(a - 0.03) * r0, Math.sin(a - 0.03) * r0); g.lineTo(Math.cos(a) * r1 - Math.sin(a) * w * 0.2, Math.sin(a) * r1 + Math.cos(a) * w * 0.2); g.lineTo(Math.cos(a + 0.03) * r0, Math.sin(a + 0.03) * r0); g.closePath(); g.fill();
+      if (rnd() < 0.4) { g.beginPath(); g.arc(Math.cos(a) * (r1 + R * 0.03), Math.sin(a) * (r1 + R * 0.03), 1.5 + rnd() * 2.5, 0, 7); g.fill(); }
+    }
+    g.globalAlpha = 1;
+  } else {
+    for (let k = 0; k < 8; k++) { const x = (rnd() - 0.5) * R * 1.5, y = (rnd() - 0.5) * R * 1.5, rr = R * (0.45 + rnd() * 0.5), gr = g.createRadialGradient(x, y, 0, x, y, rr), col = pick(pals); gr.addColorStop(0, col.replace('hsl', 'hsla').replace(')', ',.75)')); gr.addColorStop(1, col.replace('hsl', 'hsla').replace(')', ',0)')); g.fillStyle = gr; g.beginPath(); g.arc(x, y, rr, 0, 7); g.fill(); }
+    g.lineCap = 'round';
+    for (let k = 0; k < 16; k++) { g.strokeStyle = pick(pale); g.globalAlpha = 0.22 + rnd() * 0.35; g.lineWidth = 0.8 + rnd() * 3.2; g.beginPath(); const x0 = (rnd() - 0.5) * R * 2, y0 = (rnd() - 0.5) * R * 2; g.moveTo(x0, y0); g.bezierCurveTo(x0 + (rnd() - 0.5) * R, y0 + (rnd() - 0.5) * R, (rnd() - 0.5) * R * 2, (rnd() - 0.5) * R * 2, (rnd() - 0.5) * R * 2, (rnd() - 0.5) * R * 2); g.stroke(); }
+    g.globalAlpha = 1;
+  }
+  g.restore();
+  try { r.setProperty('--vpat', 'url(' + c.toDataURL('image/jpeg', 0.86) + ')'); } catch { r.removeProperty('--vpat'); }
+}
+const VP = { sig: '' };
+
+/* ---------- the 3D stack of records in the Record Room ---------- */
+const SK = { items: [], els: [], p: 0, v: 0, raf: 0, key: '', drag: null, idx: -1, lastT: 0, goal: null, moreAt: 0, st: null };
+const SK_PX = 64;                                                    // finger travel (px) that moves the stack by one record
+function skOn() { const r = $('room'); return !!r && r.classList.contains('stackmode'); }
+function skUnique(list) {                                            // a stack shows each cover once, even when many songs share an album
+  const seen = new Set(), out = [];
+  for (const t of list) { const k = t.kind === 'track' && t.art ? t.art : (t.uri || t.id); if (seen.has(k)) continue; seen.add(k); out.push(t); }
+  return out;
+}
+function skCard(t, i) {
+  const el = document.createElement('div'); el.className = 'sk-card'; el.dataset.i = String(i);
+  el.innerHTML = '<span class="sk-disc" aria-hidden="true"><i></i></span><div class="sk-cover"><span class="sk-noart"></span><img alt="" decoding="async"><span class="sk-cap"><b></b><em></em></span></div>';
+  el.querySelector('.sk-cap b').textContent = t.name || '';
+  el.querySelector('.sk-cap em').textContent = t.kind === 'playlist' ? (t.owner ? 'by ' + t.owner : 'Playlist') : (t.artists || '');
+  el.style.setProperty('--cov', t.art ? 'url("' + t.art + '")' : 'none');
+  el.querySelector('.sk-noart').style.background = 'linear-gradient(135deg,hsl(' + (rrHash(t.id || t.uri || '') % 360) + ',38%,46%),hsl(' + ((rrHash(t.id || t.uri || '') >> 3) % 360) + ',40%,24%))';
+  el._art = t.art || ''; el._on = false; el._off = false;
+  return el;
+}
+function skClamp(x) { return Math.max(0, Math.min(Math.max(0, SK.items.length - 1), x)); }
+function skLayout() {
+  const w = $('skWorld'), box = $('rrStack'); if (!w || !box) return;
+  const wide = box.clientWidth >= 720; box.classList.toggle('wide', wide);
+  const W = w.clientWidth, H = w.clientHeight; if (!W || !H) return;
+  const size = wide ? Math.max(150, Math.min(H * 0.58, W * 0.3, 400)) : Math.max(150, Math.min(W * 0.62, H * 0.5, 420)), cx = wide ? W * 0.31 : W / 2, base = size * 0.265 + 30;
+  w.style.setProperty('--sk', size + 'px'); w.style.setProperty('--cy', H * 0.5 + 'px'); w.style.setProperty('--cx', cx + 'px'); w.style.setProperty('--pk', wide ? 44 : 30);
+  for (let i = 0; i < SK.els.length; i++) {
+    const el = SK.els[i], d = i - SK.p, a = Math.abs(d);
+    if (a > 8) { if (!el._off) { el.style.display = 'none'; el._off = true; } continue; }
+    if (el._off) { el.style.display = ''; el._off = false; }
+    if (!el._on && el._art) { el._on = true; el.querySelector('img').src = el._art; }
+    const y = Math.sign(d) * (a < 1 ? a * base : base + (a - 1) * 34), tilt = Math.min(a, 1) * 62, sc = 1 + (1 - Math.min(a, 1)) * 0.04 - Math.min(a, 6) * 0.016;   // a real stack: the front record on top, the others tucked behind it with just their top edge showing
+    el.style.transform = 'translate3d(0,' + y.toFixed(1) + 'px,0) perspective(1100px) rotateX(' + tilt.toFixed(1) + 'deg) scale(' + sc.toFixed(3) + ')';
+    el.style.zIndex = 900 - Math.round(a * 10);
+    el.style.setProperty('--peek', Math.max(0, 1 - a * 1.3).toFixed(3)); el.style.setProperty('--cap', Math.min(1, a * 1.6).toFixed(2)); el.style.setProperty('--dim', Math.min(0.6, Math.max(0, a - 0.2) * 0.14).toFixed(2)); el.style.setProperty('--lift', Math.max(0, 1 - a * 1.4).toFixed(2));
+    el.style.opacity = a > 6 ? Math.max(0, 1 - (a - 6) / 2).toFixed(2) : '';
+  }
+  const idx = Math.round(SK.p); if (idx !== SK.idx) { SK.idx = idx; skInfo(); }
+}
+function skInfo() {
+  const t = SK.items[SK.idx]; if (!t) return;
+  $('rrStack').style.setProperty('--sk-bg', t.art ? 'url("' + t.art + '")' : 'none');
+  $('skT').textContent = t.name || ''; $('skA').textContent = t.kind === 'playlist' ? (t.owner ? 'by ' + t.owner : 'Playlist') : (t.artists || '');
+  const more = RR.cur && RR.cur.src && RR.cur.src.more; $('skN').textContent = (SK.idx + 1) + ' / ' + SK.items.length + (more ? '+' : '');
+  $('skOpen').textContent = t.kind === 'track' ? 'Details' : 'Open';
+  $('skPlay').textContent = t.kind === 'track' && t.id === S.trackId && S.isPlaying ? '❚❚ Pause' : t.kind === 'track' && t.id === S.trackId ? '▶ Resume' : '▶ Play';
+}
+function skTick(t) {
+  SK.raf = 0; const dt = Math.min(0.05, SK.lastT ? (t - SK.lastT) / 1000 : 0.016); SK.lastT = t;
+  if (!SK.drag) {
+    if (SK.goal != null) { SK.p += (SK.goal - SK.p) * Math.min(1, dt * 11); if (Math.abs(SK.goal - SK.p) < 0.003) { SK.p = SK.goal; SK.goal = null; } }
+    else if (Math.abs(SK.v) > 0.05) { SK.p += SK.v * dt; SK.v *= Math.pow(0.05, dt); if (Math.abs(SK.v) < 0.7) { SK.goal = skClamp(Math.round(SK.p)); SK.v = 0; } if (SK.p < 0 || SK.p > SK.items.length - 1) { SK.p = skClamp(SK.p); SK.v = 0; SK.goal = skClamp(Math.round(SK.p)); } }
+    else if (Math.abs(SK.p - Math.round(SK.p)) > 0.003) SK.goal = skClamp(Math.round(SK.p));
+  }
+  skLayout();
+  if (SK.items.length - SK.p < 14 && t - SK.moreAt > 500) { SK.moreAt = t; const v = RR.cur; if (v && (RR.shown < v.list.length || (v.src.more && !v.src.loading && !v.src.err))) rrMore(); }
+  if (SK.drag || SK.goal != null || Math.abs(SK.v) > 0.05) SK.raf = requestAnimationFrame(skTick);
+}
+function skKick() { if (!SK.raf) { SK.lastT = 0; SK.raf = requestAnimationFrame(skTick); } }
+function skRender(list, key, reset) {
+  const items = skUnique(list), w = $('skWorld');
+  if (reset || key !== SK.key || items.length < SK.items.length) { w.innerHTML = ''; SK.els = []; SK.items = []; SK.p = 0; SK.v = 0; SK.goal = null; SK.idx = -1; SK.key = key; }
+  for (let i = SK.items.length; i < items.length; i++) { const el = skCard(items[i], i); w.appendChild(el); SK.els.push(el); }
+  SK.items = items; skLayout(); skInfo(); skKick();
+}
+function skPlayCur() {
+  const t = SK.items[SK.idx], el = SK.els[SK.idx]; if (!t || !el) return;
+  const disc = el.querySelector('.sk-disc'); el.classList.add('out'); $('rrStack').classList.add('launching');
+  const job = t.kind === 'track' ? rrLaunch(disc, t.id, () => rrPlay(t), t)
+    : rrLaunch(disc, null, () => playBody({ context_uri: t.uri }, t.name), { name: t.name, artists: t.kind === 'album' ? t.artists : (t.owner ? 'by ' + t.owner : 'Playlist'), album: '' });
+  Promise.resolve(job).finally(() => { el.classList.remove('out'); $('rrStack').classList.remove('launching'); });
+}
+function skOpenCur() { const t = SK.items[SK.idx]; if (!t) return; if (t.kind === 'track') rrDetail(t); else rrOpenSub(t); }
+function skBind() {
+  const box = $('rrStack'); if (!box) return;
+  box.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.sk-info')) return; SK.goal = null; SK.v = 0;
+    SK.drag = { y: e.clientY, y0: e.clientY, lastY: e.clientY, lastT: performance.now(), v: 0, moved: false, target: e.target };
+    try { box.setPointerCapture(e.pointerId); } catch { /* ignore */ } skKick();
+  });
+  box.addEventListener('pointermove', (e) => {
+    const d = SK.drag; if (!d) return; const now = performance.now(), dy = e.clientY - d.lastY;
+    if (Math.abs(e.clientY - d.y0) > 6) d.moved = true;
+    if (d.moved) { SK.p = Math.max(-0.4, Math.min(SK.items.length - 0.6, SK.p - dy / SK_PX)); const dt = Math.max(1, now - d.lastT) / 1000; d.v = 0.6 * d.v + 0.4 * (-dy / SK_PX / dt); }
+    d.lastY = e.clientY; d.lastT = now;
+  });
+  const up = (e) => {
+    const d = SK.drag; if (!d) return; SK.drag = null;
+    if (!d.moved) { const card = d.target && d.target.closest && d.target.closest('.sk-card'); if (card) { const i = +card.dataset.i; if (i === Math.round(SK.p)) skPlayCur(); else SK.goal = i; } }
+    else SK.v = Math.max(-14, Math.min(14, d.v)); skKick();
+  };
+  box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up);
+  let wt = 0;
+  box.addEventListener('wheel', (e) => { e.preventDefault(); SK.goal = null; SK.v = 0; SK.p = Math.max(0, Math.min(SK.items.length - 1, SK.p + e.deltaY / 110)); clearTimeout(wt); wt = setTimeout(() => { SK.goal = skClamp(Math.round(SK.p)); skKick(); }, 110); skKick(); }, { passive: false });
+  document.addEventListener('keydown', (e) => {
+    if (!RR.open || !skOn() || (e.target.matches && e.target.matches('input,textarea'))) return;
+    const step = { ArrowDown: 1, ArrowRight: 1, PageDown: 4, ArrowUp: -1, ArrowLeft: -1, PageUp: -4 }[e.key];
+    if (step) { e.preventDefault(); SK.goal = skClamp(Math.round(SK.goal != null ? SK.goal : SK.p) + step); skKick(); }
+    else if (e.key === 'Enter' && !e.target.closest('button')) { e.preventDefault(); skPlayCur(); }
+  });
+  $('skPlay').onclick = skPlayCur; $('skOpen').onclick = skOpenCur;
+  addEventListener('resize', () => { if (skOn()) skLayout(); });
+  $('rrStackBtn').onclick = () => { RR.stack = !RR.stack; store.set(K.rrstack, RR.stack ? '1' : '0'); rrRender(true); };
+}
+
+/* ---------- guided tour ---------- */
+const TOUR = { on: false, i: 0, steps: [] };
+const TOUR_STEPS = [
+  { sel: '#record', title: 'Your record player', text: 'Tap or drag the tonearm onto the record to play. Drag the record itself to scrub, just like a DJ.' },
+  { sel: '#dock', title: 'Controls', text: 'Play, skip and like. The needle lifts and drops for every song, like the real thing.' },
+  { sel: '#btnMenu', title: 'Everything is in here', text: 'The gear holds every option. I will open it for you.' },
+  { sel: '#btnLibrary', menu: true, title: 'The Record Room', text: 'Your whole collection as a 3D stack of records. Drag through it, then tap one and it slides out onto the turntable.' },
+  { sel: '#btnQueue', menu: true, title: 'Up next', text: 'See what is coming up and add songs to the queue.' },
+  { sel: '#btnCustom', menu: true, title: 'Make it yours', text: 'Vinyl colours and splatter patterns, cover-art labels, clocks, backgrounds and more.' },
+  { sel: '#btnAmbient', menu: true, title: 'Ambient mode', text: 'A calm full-screen view with a clock. Tap anywhere to wake the controls.' },
+];
+function tourStart() {
+  if (TOUR.on) return; document.body.classList.remove('ambient');
+  TOUR.steps = TOUR_STEPS.filter((s) => { const e = document.querySelector(s.sel); return e && !e.hidden; }); if (!TOUR.steps.length) return;
+  TOUR.on = true; TOUR.i = 0; $('tour').hidden = false; $('tourDots').innerHTML = TOUR.steps.map(() => '<i></i>').join(''); tourShow();
+}
+function tourEnd() {
+  TOUR.on = false; $('tour').hidden = true; store.set(K.tour, '1'); if (window.closeNeedleMenu) closeNeedleMenu();
+}
+function tourShow() {
+  const s = TOUR.steps[TOUR.i], last = TOUR.i === TOUR.steps.length - 1;
+  if (window.setNeedleMenu) setNeedleMenu(!!s.menu);
+  const el = document.querySelector(s.sel);
+  $('tourStep').textContent = 'Step ' + (TOUR.i + 1) + ' of ' + TOUR.steps.length; $('tourTitle').textContent = s.title; $('tourText').textContent = s.text; $('tourNext').textContent = last ? 'Done' : 'Next';
+  [...$('tourDots').children].forEach((d, i) => d.classList.toggle('on', i === TOUR.i));
+  if (s.menu && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+  setTimeout(() => {
+    if (!TOUR.on) return; const r = el.getBoundingClientRect(), pad = 8, vw = innerWidth, vh = innerHeight, h = $('tourHole'), card = $('tourCard');
+    h.style.cssText = 'left:' + (r.left - pad) + 'px;top:' + (r.top - pad) + 'px;width:' + (r.width + pad * 2) + 'px;height:' + (r.height + pad * 2) + 'px;border-radius:' + (s.sel === '#record' ? '50%' : '18px');
+    const cw = Math.min(340, vw - 32), ch = card.offsetHeight || 190; card.style.width = cw + 'px';
+    let x, y;
+    if (r.left - pad - cw - 16 > 12 && r.width < vw * 0.5) { x = r.left - pad - cw - 16; y = r.top + r.height / 2 - ch / 2; }                 // beside the target, on its left
+    else if (r.bottom + pad + ch + 16 < vh) { x = r.left + r.width / 2 - cw / 2; y = r.bottom + pad + 16; }                                         // below it
+    else { x = r.left + r.width / 2 - cw / 2; y = r.top - pad - ch - 16; }                                                                          // above it
+    if (s.sel === '#record') { x = Math.max(16, r.left + r.width / 2 - cw / 2); y = vh - ch - 140; }
+    card.style.left = Math.max(16, Math.min(vw - cw - 16, x)) + 'px'; card.style.top = Math.max(16, Math.min(vh - ch - 16, y)) + 'px';
+  }, s.menu ? 120 : 40);
+}
+function tourBind() {
+  $('tourNext').onclick = () => { if (TOUR.i >= TOUR.steps.length - 1) tourEnd(); else { TOUR.i++; tourShow(); } };
+  $('tourSkip').onclick = tourEnd;
+  addEventListener('keydown', (e) => { if (!TOUR.on) return; if (e.key === 'Escape') { e.stopPropagation(); tourEnd(); } else if (e.key === 'Enter' || e.key === 'ArrowRight') { e.preventDefault(); $('tourNext').click(); } }, true);
+  addEventListener('resize', () => { if (TOUR.on) tourShow(); });
+  if ($('btnTour')) $('btnTour').onclick = () => { if (window.closeNeedleMenu) closeNeedleMenu(); setTimeout(tourStart, 150); };
+  setTimeout(() => { if (!store.get(K.tour) && !$('gate').classList.contains('show')) tourStart(); }, 3500);
+}
 /* ---------- like, share, add to queue, swipe ---------- */
 let likeFor = null;
 async function likeLoad(id) {
@@ -1079,6 +1325,7 @@ function rrReset() {
   RR.saved = null; RR.sub = null; RR.at = Date.now();
 }
 rrReset();
+RR.stack = store.get(K.rrstack) !== '0';
 
 /* ----- mapping Spotify objects to what the sleeves need ----- */
 function rrImg(images, want) {                            // smallest image that is still sharp enough
@@ -1312,6 +1559,10 @@ function rrRender(reset) {
   const canPlay = v.type === 'tracks' && n > 0;
   $('rrPlayAll').hidden = !(RR.sub || (v.type === 'tracks' && n)); $('rrShuffle').hidden = !canPlay;
   $('rrPlayAll').disabled = !(RR.sub ? true : canPlay);
+  // the 3D stack (the grid below stays as the alternative view)
+  const roomEl = $('room'), useStack = !!RR.stack && n > 0;
+  roomEl.classList.toggle('stackmode', useStack); $('rrStackBtn').setAttribute('aria-pressed', String(!!RR.stack)); $('rrStackBtn').textContent = RR.stack ? '▤ Grid' : '▤ Stack';
+  if (useStack) { skRender(v.list.slice(0, RR.shown), key, reset); $('rrState').innerHTML = ''; rrSync(); return; }
   // grid
   const want = v.list.slice(0, RR.shown), prev = RR.drawn || [];
   const keepOld = !reset && key === RR.drawnKey && prev.length > 0 && prev.length <= want.length && prev.every((t, i) => t === want[i]);
@@ -2013,7 +2264,7 @@ function bind() {
   let lyQT = 0; $('lyPickQ').addEventListener('input', () => { clearTimeout(lyQT); lyQT = setTimeout(runLyPick, 400); });
   setInterval(() => { if (!document.hidden) lyTick(false); }, 200);
   $('btnDevicesClose').onclick = () => { $('devicesModal').hidden = true; WAIT.ctx = null; };
-  bindRoom();
+  bindRoom(); skBind(); tourBind();
   if ($('btnTheme')) $('btnTheme').onclick = toggleTheme;
   if ($('btnStyle')) $('btnStyle').onclick = () => applyStyle(!document.body.classList.contains('retro'), true);
   { const mq = matchMedia('(prefers-color-scheme: dark)'); (mq.addEventListener ? mq.addEventListener('change', applyTheme) : mq.addListener(applyTheme)); }
@@ -2028,9 +2279,9 @@ function bind() {
     const list = [...menu.querySelectorAll('button:not([hidden])')], i = list.indexOf(document.activeElement);
     if (e.key === 'ArrowDown') { e.preventDefault(); list[(i + 1) % list.length].focus(); } else if (e.key === 'ArrowUp') { e.preventDefault(); list[(i - 1 + list.length) % list.length].focus(); }
   });
-  window.closeNeedleMenu = () => setMenu(false);
+  window.closeNeedleMenu = () => setMenu(false); window.setNeedleMenu = setMenu;
   $('btnCustom').onclick = openCustom; $('btnCustomClose').onclick = closeCustom; $('customModal').addEventListener('pointerdown', (e) => { if (e.target === $('customModal')) closeCustom(); });
-  $('btnCustomReset').onclick = () => { CUSTOM = Object.assign({}, CUSTOM_DEF); saveCustom(); };
+  $('btnCustomReset').onclick = () => { CUSTOM = Object.assign({}, CUSTOM_DEF); RR.stack = true; store.set(K.rrstack, '1'); if (RR.open) rrRender(true); saveCustom(); };
   setInterval(() => { if (!document.hidden) clockKick(); }, 20000); document.addEventListener('visibilitychange', clockKick);
   $('btnLike').onclick = toggleLike; $('btnShare').onclick = shareSong; if ($('rrDQueue')) $('rrDQueue').onclick = rrAddQueue; bindSwipe();
   $('btnShuffle').onclick = setShuffle; $('btnRepeat').onclick = cycleRepeat; $('btnSleep').onclick = cycleSleep;

@@ -12,7 +12,7 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="style.css?v=37">
+<link rel="stylesheet" href="style.css?v=40">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shrikhand&family=Special+Elite&display=swap" media="print" onload="this.media='all'">
 </head>
@@ -103,12 +103,13 @@
     <button class="icon sm" role="menuitem" id="btnSfx" title="Vinyl sounds (S)" aria-label="Vinyl scratch sounds" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="slash" d="M3 3l18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="lbl">Vinyl sounds</span></button>
     <button class="icon sm" role="menuitem" id="btnStyle" title="Retro / Classic look" aria-label="Switch to the classic look" aria-pressed="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/><path d="M12 3v3M21 12h-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="lbl">Retro look</span></button>
     <button class="icon sm" role="menuitem" id="btnTheme" title="Dark mode" aria-label="Switch to dark mode" aria-pressed="false"><svg class="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><svg class="moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z" fill="currentColor"/></svg><span class="lbl">Dark mode</span></button>
+    <button class="icon sm" role="menuitem" id="btnTour" title="Take the tour" aria-label="Take the guided tour"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.6 2.2c-.8.4-1.2 1-1.2 1.9M12 17.2v.1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="lbl">Take the tour</span></button>
     <button class="icon sm" role="menuitem" id="btnCustom" title="Customize the look" aria-label="Customize the look"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.4 0 2-.9 2-1.8 0-1.3-1.2-1.6-1.2-2.8 0-1 .8-1.7 1.9-1.7H17a4 4 0 0 0 4-4C21 6.8 17 3 12 3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="7.5" cy="11" r="1.2" fill="currentColor"/><circle cx="10.5" cy="7" r="1.2" fill="currentColor"/><circle cx="15.5" cy="8" r="1.2" fill="currentColor"/></svg><span class="lbl">Customize…</span></button>
     <button class="icon sm" role="menuitem" id="btnAmbient" title="Ambient mode (A)" aria-label="Ambient mode"><svg viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg><span class="lbl">Ambient mode</span></button>
     <button class="icon sm" role="menuitem" id="btnFull" title="Fullscreen (F)" aria-label="Fullscreen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="lbl">Full screen</span></button>
     <button class="icon sm" role="menuitem" id="btnLogout" title="Disconnect Spotify" aria-label="Disconnect Spotify"><svg viewBox="0 0 24 24"><path d="M10 4H5v16h5M15 8l4 4-4 4M19 12H9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Disconnect Spotify</span></button>
       <button type="button" class="menu-close wide" id="btnMenuClose2" aria-label="Close options">&#10005; Close options</button>
-      <div class="menu-ver" aria-hidden="true">Build 37</div>
+      <div class="menu-ver" aria-hidden="true">Build 40</div>
     </div>
   </div>
 </header>
@@ -189,6 +190,7 @@
       <button class="rr-pill" id="rrBack" type="button" hidden>‹ Back</button>
       <div class="rr-crumb"><b id="rrCrumb">All Songs</b><span id="rrCount"></span></div>
       <div class="rr-acts">
+        <button class="rr-pill" id="rrStackBtn" type="button" aria-pressed="true" title="Switch between the 3D stack and the grid">▤ Stack</button>
         <button class="rr-pill hot" id="rrPlayAll" type="button" hidden>▶ Play</button>
         <button class="rr-pill" id="rrShuffle" type="button" hidden>⤮ Shuffle collection</button>
       </div>
@@ -197,6 +199,14 @@
     <div class="rr-body" id="rrBody">
       <ul class="rr-grid" id="rrGrid"></ul>
       <div class="rr-state" id="rrState" aria-live="polite"></div>
+    </div>
+
+    <div class="rr-stack" id="rrStack" aria-label="Stack of records. Drag, scroll or use the arrow keys, then press Play.">
+      <div class="sk-world" id="skWorld"></div>
+      <div class="sk-info" id="skInfo" aria-live="polite">
+        <div class="sk-t"><b id="skT"></b><span id="skA"></span><i id="skN"></i></div>
+        <div class="sk-btns"><button class="rr-pill" id="skOpen" type="button">Details</button><button class="rr-pill hot" id="skPlay" type="button">▶ Play</button></div>
+      </div>
     </div>
 
     <div class="rr-now" id="rrNow" hidden>
@@ -243,6 +253,15 @@
   </div>
 </section>
 
+<div id="tour" hidden>
+  <div id="tourHole"></div>
+  <div id="tourCard" role="dialog" aria-live="polite" aria-label="Guided tour">
+    <div class="tour-step" id="tourStep"></div>
+    <h3 id="tourTitle"></h3><p id="tourText"></p>
+    <div class="tour-dots" id="tourDots"></div>
+    <div class="tour-btns"><button type="button" class="tour-skip" id="tourSkip">Skip</button><button type="button" class="tour-next" id="tourNext">Next</button></div>
+  </div>
+</div>
 <div id="ambClock" aria-hidden="true">
   <svg class="ck-dial" viewBox="-50 -50 100 100">
     <circle class="ck-ring" r="48.5"/><circle class="ck-face" r="45"/>
@@ -279,7 +298,7 @@
 
 <div id="toast" role="status"></div>
 
-<script src="config.js?v=37"></script>
-<script src="app.js?v=37"></script>
+<script src="config.js?v=40"></script>
+<script src="app.js?v=40"></script>
 </body>
 </html>

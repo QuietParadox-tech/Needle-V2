@@ -109,3 +109,17 @@ iOS shows the Spotify player's hidden iframe ("Spotify Embedded Player") as the 
 
 ## Options menu
 The gear menu stays open until you press **Close** (top or bottom), tap the gear again, or press Esc.
+
+## More Customize options (Build 38)
+- **Clock style** – Dial + digital, Dial only or Digital only, plus a **24-hour clock** switch.
+- **Auto Ambient mode** – switches to Ambient by itself after 1, 5 or 10 minutes without a touch while a song plays (never while a menu or panel is open).
+- **Vinyl crackle** – a soft synthesised hiss and pops under the music (it is NEEDLE's own sound, mixed with Spotify's audio).
+
+## Build 39: stack, patterns, tour
+- **Record Room → Stack** (default; the Grid button switches back): your records as a 3D stack. Drag, scroll, or use the arrow keys; tap the front record (or ▶ Play) and it slides out of its sleeve onto the turntable. A soft glow of the cover colours fills the room behind it.
+- **Vinyl pattern** (Customize): Solid, Splatter, Starburst, Marble – painted from each song's cover colours.
+- **Record label → Cover art**: the whole album cover on the label.
+- **Take the tour** (menu): a seven-step guided tour. It also appears once on first run.
+
+## Build 40
+Customize is now grouped (The record / Record Room / Colours / Clock and Ambient mode / Extras) and every new feature has a switch: Record Room view (3D stack or Grid), the record peeking out of its sleeve, the cover-colour glow, vinyl pattern, cover-art label, crackle, and a button to replay the tour. In wide drawers the stack is a true stack with the song details beside the record, so there is no empty space.
