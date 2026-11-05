@@ -838,7 +838,7 @@ async function skipTo(i) {                                  // Spotify has no "j
 }
 
 /* ---------- customize: record speed, vinyl colour, label, retro palette, ambient clock, grain ---------- */
-const CUSTOM_DEF = { spin: '10s', vinyl: '#0b0b0b', label: 'default', bg: 'cover', pal: 'ember', clock: false, grain: true, ckStyle: 'full', ck24: false, crackle: false, idle: 0, vpat: 'solid', peek: true, glow: true };
+const CUSTOM_DEF = { spin: '10s', vinyl: '#0b0b0b', label: 'default', bg: 'cover', pal: 'ember', clock: false, grain: true, ckStyle: 'full', ck24: false, crackle: false, idle: 0, vpat: 'solid', peek: true, glow: true, dust: false };
 const CUSTOM_OPTS = {
   spin: [['Lazy', '14s'], ['Slow', '10s'], ['33⅓ rpm', '1.8s']],
   vinyl: [['Black', '#0b0b0b'], ['Crimson', '#4a0d14'], ['Navy', '#0c1f4a'], ['Forest', '#0d3322'], ['Amber', '#4a2c0a'], ['Ivory', '#b8b09c']],
@@ -895,7 +895,7 @@ function applyCustom() {
   r.setProperty('--spin', CUSTOM.spin); r.setProperty('--vinyl', CUSTOM.vinyl);
   if (CUSTOM.pal === 'ember') delete b.dataset.pal; else b.dataset.pal = CUSTOM.pal;
   b.classList.toggle('clock', !!CUSTOM.clock); b.classList.toggle('nograin', !CUSTOM.grain);
-  b.classList.toggle('nopeek', !CUSTOM.peek); b.classList.toggle('noglow', !CUSTOM.glow); b.dataset.ck = CUSTOM.ckStyle; CK.key = ''; b.classList.toggle('labcustom', CUSTOM.label !== 'default' && CUSTOM.label !== 'art'); b.classList.toggle('labart', CUSTOM.label === 'art'); applyLabel(); vinylPattern(); clockKick(); crackleSync();
+  b.classList.toggle('dust', !!CUSTOM.dust); b.classList.toggle('nopeek', !CUSTOM.peek); b.classList.toggle('noglow', !CUSTOM.glow); b.dataset.ck = CUSTOM.ckStyle; CK.key = ''; b.classList.toggle('labcustom', CUSTOM.label !== 'default' && CUSTOM.label !== 'art'); b.classList.toggle('labart', CUSTOM.label === 'art'); applyLabel(); vinylPattern(); clockKick(); crackleSync();
 }
 /* ---------- vinyl crackle: a soft synthesised hiss and pops that play under the music ---------- */
 const CR = { ctx: null, g: null };
@@ -947,7 +947,7 @@ function buildCustom() {
     d = sec('Vinyl colour'); CUSTOM_OPTS.vinyl.forEach(([l, v]) => chip(d, 'vinyl', l, v, 'sw', v));
     d = sec('Vinyl pattern', 'Painted from the cover colours of each song.'); CUSTOM_OPTS.vpat.forEach(([l, v]) => chip(d, 'vpat', l, v));
     d = sec('Record label', 'Cover colours matches the label to the artwork; Cover art puts the whole cover on the label.'); CUSTOM_OPTS.label.forEach(([l, v]) => chip(d, 'label', l, v, v === 'default' ? 'sw def' : v === 'cover' ? 'sw cover' : v === 'art' ? 'sw art' : 'sw', v === 'default' || v === 'cover' || v === 'art' ? '' : LABELS[v][0]));
-  d = sec('Record extras'); tog(d, 'Vinyl crackle', () => CUSTOM.crackle, (v) => { CUSTOM.crackle = v; });
+  d = sec('Record extras'); tog(d, 'Vinyl crackle', () => CUSTOM.crackle, (v) => { CUSTOM.crackle = v; }); tog(d, 'Dust and scratches', () => CUSTOM.dust, (v) => { CUSTOM.dust = v; });
   grp('Record Room');
   d = sec('View', 'How your collection is laid out.'); [['3D stack', true], ['Grid', false]].forEach(([l, v]) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = l; b.setAttribute('aria-pressed', String(!!RR.stack === v)); b.onclick = () => { RR.stack = v; store.set(K.rrstack, v ? '1' : '0'); if (RR.open) rrRender(true); buildCustom(); }; d.appendChild(b); });
   d = sec('Stack details'); tog(d, 'Record peeking from the sleeve', () => CUSTOM.peek, (v) => { CUSTOM.peek = v; }); tog(d, 'Cover colour glow', () => CUSTOM.glow, (v) => { CUSTOM.glow = v; });

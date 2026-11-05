@@ -123,3 +123,9 @@ The gear menu stays open until you press **Close** (top or bottom), tap the gear
 
 ## Build 40
 Customize is now grouped (The record / Record Room / Colours / Clock and Ambient mode / Extras) and every new feature has a switch: Record Room view (3D stack or Grid), the record peeking out of its sleeve, the cover-colour glow, vinyl pattern, cover-art label, crackle, and a button to replay the tour. In wide drawers the stack is a true stack with the song details beside the record, so there is no empty space.
+
+## Build 41
+New switch in Customize → The record → **Dust and scratches**: fine specks and hairline scratches on the vinyl that spin with it.
+
+## Build 42
+Fix: the song Details panel now opens on top of the 3D stack instead of showing the stack through it.
